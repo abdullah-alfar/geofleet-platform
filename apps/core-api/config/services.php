@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Least-privilege Postgres role for apps/location-service (Go). See
+    // database/migrations/*_create_location_service_role.php.
+    'location_service' => [
+        'db_password' => env('LOCATION_SERVICE_DB_PASSWORD'),
+    ],
+
 ];

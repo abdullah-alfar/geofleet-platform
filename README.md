@@ -11,11 +11,12 @@ read it before contributing.
 
 ## Status
 
-**Phase 2 of 8: Laravel core.** Local infrastructure (Phase 1) plus the
-Laravel 13 core-api: auth, driver/vehicle/device management, ride requests,
-trips, the transactional outbox, and an OpenAPI spec. Go services
-(location, dispatch, realtime-gateway) don't exist yet. See the phase map
-in `AGENTS.md`.
+**Phase 3 of 8: Go location-service.** Local infrastructure (Phase 1) +
+Laravel core-api (Phase 2) + a Go 1.26.3 GPS-ingestion service: validates
+updates (range/staleness/duplicate-sequence/impossible-speed/disabled
+driver-vehicle), publishes to Kafka, and stores the latest location per
+driver in Redis. dispatch-service and realtime-gateway don't exist yet. See
+the phase map in `AGENTS.md`.
 
 ## Repository layout
 
@@ -110,10 +111,29 @@ watch -n 2 php artisan outbox:publish
 The OpenAPI spec for the resulting REST surface is at
 [contracts/openapi/openapi.yaml](contracts/openapi/openapi.yaml).
 
+## Quick start (location-service)
+
+Requires Go 1.26.3. Run after core-api's migrations have been applied
+(they create the least-privilege `location_service` Postgres role this
+service connects with).
+
+```bash
+cd apps/location-service
+cp .env.example .env
+export $(grep -v '^#' .env | xargs)
+go run ./cmd/location-service
+```
+
+See [apps/location-service/README.md](apps/location-service/README.md) for
+the validation pipeline, Kafka topics, Redis key schema, and a sample
+`curl` request.
+
 ## Documentation
 
 Start with [docs/architecture/system-context.md](docs/architecture/system-context.md)
-for the system-level view, and the ADRs in
-[docs/decisions/](docs/decisions/) for why Kafka, PostgreSQL/PostGIS, and
-the monorepo structure were chosen. Further architecture, event, and
-database docs are added as their corresponding phases land.
+for the system-level view, the ADRs in [docs/decisions/](docs/decisions/)
+for why Kafka, PostgreSQL/PostGIS, and the monorepo structure were chosen,
+and [docs/events/event-envelope.md](docs/events/event-envelope.md) +
+[docs/events/topic-catalog.md](docs/events/topic-catalog.md) for the Kafka
+event contract every service follows. Further architecture and database
+docs are added as their corresponding phases land.
