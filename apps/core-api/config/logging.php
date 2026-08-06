@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -63,6 +64,10 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            // Structured JSON logs (brief's Observability requirement) —
+            // correlation_id rides along automatically via
+            // Log::shareContext() in AssignCorrelationId middleware.
+            'formatter' => JsonFormatter::class,
         ],
 
         'daily' => [

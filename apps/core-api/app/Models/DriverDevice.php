@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
-#[Fillable(['driver_id', 'device_identifier', 'platform', 'app_version'])]
+#[Fillable(['driver_id', 'device_identifier', 'platform', 'app_version', 'token_hash'])]
 #[Hidden(['token_hash'])]
 class DriverDevice extends Model
 {

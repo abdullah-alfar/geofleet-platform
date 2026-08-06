@@ -1,0 +1,526 @@
+openapi: 3.0.3
+info:
+  title: Ride-Hailing Core API
+  version: "1.0"
+  description: >
+    REST surface owned by apps/core-api (Laravel 13). Covers authentication,
+    driver/vehicle/device management, ride requests, and trips as built in
+    Phase 2. GPS ingestion, dispatch, and realtime WebSocket endpoints are
+    owned by separate Go services (see docs/architecture/system-context.md)
+    and are documented separately as those phases land.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development (php artisan serve)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Drivers
+  - name: Driver
+  - name: RideRequests
+  - name: Trips
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new customer or driver account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Exchange credentials for a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current access token
+      responses:
+        '200': { description: Logged out }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current authenticated user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+
+  /drivers/vehicles:
+    get:
+      tags: [Drivers]
+      summary: List the authenticated driver's vehicles (paginated)
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVehicles'
+    post:
+      tags: [Drivers]
+      summary: Register a new vehicle (becomes the driver's active vehicle)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Vehicle' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /driver/devices:
+    get:
+      tags: [Driver]
+      summary: List the authenticated driver's registered devices
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/DriverDevice' }
+    post:
+      tags: [Driver]
+      summary: Register a device and mint its device token
+      description: >
+        The returned `device_token` is shown once and is a credential
+        distinct from the driver's own Sanctum bearer token — it is what
+        location-service (Phase 3) uses to authenticate GPS updates from
+        this specific device.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_identifier, platform]
+              properties:
+                device_identifier: { type: string }
+                platform: { type: string, enum: [ios, android] }
+                app_version: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/DriverDevice' }
+                  meta:
+                    type: object
+                    properties:
+                      device_token: { type: string }
+
+  /driver/availability:
+    patch:
+      tags: [Driver]
+      summary: Toggle driver availability
+      description: >
+        Writes driver.status.changed.v1 to the outbox in the same
+        transaction as the DB update (transactional outbox pattern).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_available]
+              properties:
+                is_available: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Driver' }
+
+  /ride-requests:
+    post:
+      tags: [RideRequests]
+      summary: Create a ride request
+      description: >
+        Writes the ride_requests row and a ride.requested.v1 outbox event in
+        one DB transaction. Supports an `Idempotency-Key` header to make
+        retried POSTs safe — replaying the same key returns the original
+        request instead of creating a duplicate.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RideRequestCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RideRequest' }
+        '200':
+          description: Returned unchanged (idempotency key already used)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RideRequest' }
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /ride-requests/{id}:
+    get:
+      tags: [RideRequests]
+      summary: Fetch a ride request (owner customer or assigned driver only)
+      parameters:
+        - $ref: '#/components/parameters/UuidPathParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RideRequest' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ride-requests/{id}/cancel:
+    post:
+      tags: [RideRequests]
+      summary: Cancel a ride request while it is still searching/offered
+      parameters:
+        - $ref: '#/components/parameters/UuidPathParam'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/RideRequest' }
+        '409':
+          description: Already assigned or resolved before cancellation could apply
+        '422':
+          description: Not in a cancellable status
+
+  /trips:
+    get:
+      tags: [Trips]
+      summary: List the authenticated user's trips (as customer or driver)
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTrips'
+
+  /trips/{id}:
+    get:
+      tags: [Trips]
+      summary: Fetch a trip (owning customer or driver only)
+      parameters:
+        - $ref: '#/components/parameters/UuidPathParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Trip' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Laravel Sanctum personal access token
+
+  parameters:
+    UuidPathParam:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 50, default: 15 }
+
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    Forbidden:
+      description: Not authorized to access this resource
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: validation_failed }
+            message: { type: string }
+            details: { type: object, nullable: true }
+            correlation_id: { type: string, format: uuid, nullable: true }
+
+    GeoPoint:
+      type: object
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password, password_confirmation, role]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        password: { type: string, format: password }
+        password_confirmation: { type: string, format: password }
+        role: { type: string, enum: [customer, driver] }
+        region_id: { type: string, nullable: true, example: amman }
+        license_number: { type: string, nullable: true, description: "Required when role=driver" }
+        license_expires_at: { type: string, format: date, nullable: true, description: "Required when role=driver" }
+
+    AuthResponse:
+      type: object
+      properties:
+        data: { $ref: '#/components/schemas/User' }
+        meta:
+          type: object
+          properties:
+            token: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, nullable: true }
+        role: { type: string, enum: [customer, driver, admin] }
+        status: { type: string, enum: [active, suspended, disabled] }
+        region_id: { type: string }
+        customer: { $ref: '#/components/schemas/Customer' }
+        driver: { $ref: '#/components/schemas/Driver' }
+        created_at: { type: string, format: date-time }
+
+    Customer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        rating: { type: number, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Driver:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending_review, active, suspended, disabled] }
+        is_available: { type: boolean }
+        rating: { type: number, nullable: true }
+        acceptance_rate: { type: number, nullable: true }
+        region_id: { type: string }
+        license_expires_at: { type: string, format: date, nullable: true }
+        active_vehicle: { $ref: '#/components/schemas/Vehicle' }
+        created_at: { type: string, format: date-time }
+
+    VehicleRequest:
+      type: object
+      required: [make, model, year, color, plate_number, vehicle_type]
+      properties:
+        make: { type: string }
+        model: { type: string }
+        year: { type: integer }
+        color: { type: string }
+        plate_number: { type: string }
+        vehicle_type: { type: string, enum: [sedan, suv, van, motorcycle] }
+
+    Vehicle:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        make: { type: string }
+        model: { type: string }
+        year: { type: integer }
+        color: { type: string }
+        plate_number: { type: string }
+        vehicle_type: { type: string, enum: [sedan, suv, van, motorcycle] }
+        status: { type: string, enum: [active, inactive, maintenance] }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    DriverDevice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        device_identifier: { type: string }
+        platform: { type: string, enum: [ios, android] }
+        app_version: { type: string, nullable: true }
+        status: { type: string, enum: [active, revoked] }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    RideRequestCreate:
+      type: object
+      required: [pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, requested_vehicle_type]
+      properties:
+        pickup_lat: { type: number, format: double }
+        pickup_lng: { type: number, format: double }
+        pickup_address: { type: string, nullable: true }
+        dropoff_lat: { type: number, format: double }
+        dropoff_lng: { type: number, format: double }
+        dropoff_address: { type: string, nullable: true }
+        requested_vehicle_type: { type: string, enum: [sedan, suv, van, motorcycle] }
+
+    RideRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [searching, offered, accepted, cancelled, expired, unavailable] }
+        region_id: { type: string }
+        pickup: { $ref: '#/components/schemas/GeoPoint' }
+        pickup_address: { type: string, nullable: true }
+        dropoff: { $ref: '#/components/schemas/GeoPoint' }
+        dropoff_address: { type: string, nullable: true }
+        requested_vehicle_type: { type: string }
+        requested_at: { type: string, format: date-time }
+        accepted_at: { type: string, format: date-time, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        driver: { $ref: '#/components/schemas/Driver' }
+        created_at: { type: string, format: date-time }
+
+    Trip:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [in_progress, completed, cancelled] }
+        region_id: { type: string }
+        pickup: { $ref: '#/components/schemas/GeoPoint' }
+        dropoff: { $ref: '#/components/schemas/GeoPoint', nullable: true }
+        distance_meters: { type: number, nullable: true }
+        duration_seconds: { type: integer, nullable: true }
+        fare_amount: { type: number, nullable: true }
+        currency: { type: string, example: JOD }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        driver: { $ref: '#/components/schemas/Driver' }
+        vehicle: { $ref: '#/components/schemas/Vehicle' }
+        created_at: { type: string, format: date-time }
+
+    PaginatedVehicles:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Vehicle' }
+        links: { type: object }
+        meta: { type: object }
+
+    PaginatedTrips:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Trip' }
+        links: { type: object }
+        meta: { type: object }
