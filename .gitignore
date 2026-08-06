@@ -1,0 +1,44 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Laravel (apps/core-api)
+apps/core-api/vendor/
+apps/core-api/node_modules/
+apps/core-api/storage/*.key
+apps/core-api/storage/app/*
+!apps/core-api/storage/app/.gitkeep
+apps/core-api/storage/framework/cache/*
+apps/core-api/storage/framework/sessions/*
+apps/core-api/storage/framework/testing/*
+apps/core-api/storage/framework/views/*
+apps/core-api/storage/logs/*
+apps/core-api/bootstrap/cache/*
+!apps/core-api/bootstrap/cache/.gitkeep
+apps/core-api/public/hot
+apps/core-api/public/storage
+apps/core-api/.phpunit.result.cache
+apps/core-api/Homestead.json
+apps/core-api/Homestead.yaml
+apps/core-api/auth.json
+
+# Go services
+apps/location-service/bin/
+apps/dispatch-service/bin/
+apps/realtime-gateway/bin/
+**/*.exe
+**/*.test
+
+# Docker volumes / local data
+infrastructure/**/data/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
