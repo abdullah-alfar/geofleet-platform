@@ -106,6 +106,13 @@ class RideRequestController extends Controller
                 'idempotency_key' => $idempotencyKey,
             ]);
 
+            // Postgres INSERT..RETURNING only returns `id` (see
+            // AuthController::register for the full explanation) — refresh
+            // so `uuid` (used below as the outbox aggregate_id and Kafka
+            // partition key) and `status` are actually populated rather
+            // than null.
+            $rideRequest->refresh();
+
             Outbox::record(
                 aggregateType: 'ride_request',
                 aggregateId: $rideRequest->uuid,

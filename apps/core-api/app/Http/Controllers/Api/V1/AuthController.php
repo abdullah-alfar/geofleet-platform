@@ -39,7 +39,11 @@ class AuthController extends Controller
                 ]);
             }
 
-            return $user;
+            // Postgres INSERT..RETURNING (via Laravel's insertGetId) only
+            // returns the id column, so DB-generated defaults (uuid,
+            // status) are never synced into the in-memory instance without
+            // an explicit refresh.
+            return $user->refresh();
         });
 
         $token = $user->createToken('mobile')->plainTextToken;

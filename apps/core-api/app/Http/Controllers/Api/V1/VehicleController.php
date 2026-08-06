@@ -34,7 +34,10 @@ class VehicleController extends Controller
             // needed after deactivating the rest.
             $driver->vehicles()->where('is_active', true)->update(['is_active' => false]);
 
-            return $driver->vehicles()->create($data);
+            // Postgres INSERT..RETURNING only returns `id`, so DB-generated
+            // defaults (uuid, status, is_active) need an explicit refresh
+            // to appear on the returned resource.
+            return $driver->vehicles()->create($data)->refresh();
         });
 
         return (new VehicleResource($vehicle))->response()->setStatusCode(201);

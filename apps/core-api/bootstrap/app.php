@@ -18,7 +18,18 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->throttleApi(redis: true);
 
-        $middleware->api(append: [
+        // This is an API-only backend with no web login page. Laravel's
+        // ApplicationBuilder unconditionally defaults unauthenticated
+        // guests to redirect to route('login') — which doesn't exist here
+        // — regardless of whether the client sent an Accept: application/
+        // json header. Without this override, a client that omits that
+        // header gets a 500 (RouteNotFoundException) instead of a 401.
+        $middleware->redirectGuestsTo(fn () => null);
+
+        // Prepended (not appended): must run before route-model binding
+        // resolution so a 404 from an unresolvable {model:uuid} still gets
+        // a correlation id attached.
+        $middleware->api(prepend: [
             AssignCorrelationId::class,
         ]);
 

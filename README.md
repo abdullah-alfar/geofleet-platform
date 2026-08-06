@@ -11,9 +11,11 @@ read it before contributing.
 
 ## Status
 
-**Phase 1 of 8: Local infrastructure.** Only Docker Compose, PostgreSQL/
-PostGIS, Kafka, and Redis exist so far — no application code yet. See the
-phase map in `AGENTS.md`.
+**Phase 2 of 8: Laravel core.** Local infrastructure (Phase 1) plus the
+Laravel 13 core-api: auth, driver/vehicle/device management, ride requests,
+trips, the transactional outbox, and an OpenAPI spec. Go services
+(location, dispatch, realtime-gateway) don't exist yet. See the phase map
+in `AGENTS.md`.
 
 ## Repository layout
 
@@ -54,8 +56,8 @@ This brings up:
 
 | Service | Purpose | Host port |
 |---|---|---|
-| `postgres` | PostgreSQL 16 + PostGIS 3.4 | `5432` |
-| `redis` | Redis 7.4, password-protected | `6379` |
+| `postgres` | PostgreSQL 16 + PostGIS 3.4 | `55432` (remapped off the standard 5432 — see `.env.example`) |
+| `redis` | Redis 7.4, password-protected | `63790` (remapped off the standard 6379) |
 | `kafka` | Single-node Kafka (KRaft mode) | `9094` (external listener) |
 | `kafka-init` | One-shot job that creates the topic catalog, then exits | — |
 
@@ -83,6 +85,30 @@ Tear down and wipe local data volumes:
 ```bash
 docker compose down -v
 ```
+
+## Quick start (core-api)
+
+Requires PHP 8.4 with `pdo_pgsql` and `rdkafka` extensions, and Composer.
+Run after the infrastructure above is up.
+
+```bash
+cd apps/core-api
+composer install
+cp .env.example .env    # already points at the infra ports above
+php artisan migrate
+php artisan serve --port=8000
+```
+
+In a second terminal, run the transactional outbox publisher (polls for
+unpublished events and sends them to Kafka — see
+`app/Console/Commands/PublishOutboxEvents.php`):
+
+```bash
+watch -n 2 php artisan outbox:publish
+```
+
+The OpenAPI spec for the resulting REST surface is at
+[contracts/openapi/openapi.yaml](contracts/openapi/openapi.yaml).
 
 ## Documentation
 

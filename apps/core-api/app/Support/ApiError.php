@@ -2,14 +2,11 @@
 
 namespace App\Support;
 
-use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
-use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Throwable;
 
 /**
@@ -18,9 +15,26 @@ use Throwable;
  * shapes. Attaches the request's correlation id (see
  * App\Http\Middleware\AssignCorrelationId) so a client-reported error can
  * be matched to server-side logs.
+ *
+ * Note: Laravel's own Handler::prepareException() converts several
+ * exception types (ModelNotFoundException -> NotFoundHttpException,
+ * AuthorizationException -> AccessDeniedHttpException, etc.) *before* this
+ * renderer ever sees them — so this only needs to special-case exceptions
+ * that DON'T already implement HttpExceptionInterface by that point
+ * (validation and pre-auth failures), and otherwise derive a semantic code
+ * from the already-resolved HTTP status.
  */
 class ApiError
 {
+    private const STATUS_CODES = [
+        401 => 'unauthenticated',
+        403 => 'forbidden',
+        404 => 'not_found',
+        409 => 'conflict',
+        422 => 'unprocessable',
+        429 => 'rate_limited',
+    ];
+
     public static function render(Throwable $e, Request $request): ?JsonResponse
     {
         if (! $request->is('api/*')) {
@@ -30,10 +44,12 @@ class ApiError
         [$status, $code, $message, $details] = match (true) {
             $e instanceof ValidationException => [422, 'validation_failed', 'The given data was invalid.', $e->errors()],
             $e instanceof AuthenticationException => [401, 'unauthenticated', 'Authentication required.', null],
-            $e instanceof AuthorizationException => [403, 'forbidden', $e->getMessage() ?: 'This action is unauthorized.', null],
-            $e instanceof ModelNotFoundException => [404, 'not_found', 'Resource not found.', null],
-            $e instanceof TooManyRequestsHttpException => [429, 'rate_limited', 'Too many requests.', null],
-            $e instanceof HttpExceptionInterface => [$e->getStatusCode(), 'http_error', $e->getMessage() ?: 'Request failed.', null],
+            $e instanceof HttpExceptionInterface => [
+                $e->getStatusCode(),
+                self::STATUS_CODES[$e->getStatusCode()] ?? 'http_error',
+                $e->getMessage() ?: 'Request failed.',
+                null,
+            ],
             default => [500, 'server_error', config('app.debug') ? $e->getMessage() : 'An unexpected error occurred.', null],
         };
 

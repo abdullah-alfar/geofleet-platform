@@ -29,10 +29,13 @@ class DriverDeviceController extends Controller
         // authenticates the device itself, not a logged-in user session.
         $token = DriverDevice::generateToken();
 
+        // Postgres INSERT..RETURNING only returns `id`, so DB-generated
+        // defaults (uuid, status) need an explicit refresh to appear on the
+        // returned resource.
         $device = $driver->devices()->create([
             ...$data,
             'token_hash' => $token['hash'],
-        ]);
+        ])->refresh();
 
         return (new DriverDeviceResource($device))
             ->additional(['meta' => [
