@@ -83,6 +83,14 @@ reference.
 | `(trip_id, occurred_at)` | Rendering a trip's full timeline in chronological order (support/audit use cases). |
 | CHECK `status` | Constrained to the same set as `trips.status`. |
 
+## trip_location_samples
+
+| Index | Supports |
+|---|---|
+| `(id, recorded_at)` primary key | Required by Postgres for any partitioned table's PK to include the partition key column — see [partitioning.md](partitioning.md). Not a query-driven index. |
+| `(trip_id, recorded_at)` | The sampling-throttle check ("what was the last sample for this trip?") and any future route-rendering query — both need "this trip's samples, in time order". |
+| `location` GiST (spatial) | PostGIS queries over trip routes (heatmaps, corridor analysis — brief's spatial design section). Created once on the parent partitioned table; Postgres automatically creates a matching index on every partition, including ones added later. |
+
 ## payments
 
 | Index | Supports |

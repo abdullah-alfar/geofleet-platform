@@ -23,7 +23,7 @@ Retry and dead-letter topics are intentionally **not** in this catalog yet
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
 | `driver.location.received.v1` | 6 | `driver_id` | location-service | none yet | live (Phase 3) — best-effort raw/audit stream, see [apps/location-service/README.md](../../apps/location-service/README.md) |
-| `driver.location.validated.v1` | 6 | `driver_id` | location-service | dispatch-service, realtime-gateway | live (Phase 3) producer; consumers land Phase 4–6 |
+| `driver.location.validated.v1` | 6 | `driver_id` | location-service | core-api (`kafka:consume-location-updates`), dispatch-service (planned) | live (Phase 3 producer, Phase 4 consumer) — see [apps/core-api's ConsumeLocationUpdates](../../apps/core-api/app/Console/Commands/ConsumeLocationUpdates.php) |
 | `driver.status.changed.v1` | 3 | `driver_id` | core-api (`PATCH /api/v1/driver/availability`) | dispatch-service | live (Phase 2) producer; consumer lands Phase 5 |
 
 Why `driver_id` as the key for all three: every update for one driver must
@@ -64,9 +64,21 @@ mid-offer — a Phase 6 realtime-gateway concern, not built ahead of schedule.
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
 | `trip.started.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway | planned |
-| `trip.location.updated.v1` | 6 | `trip_id` | TBD (likely a Phase 4 consumer re-keying validated GPS events by trip) | realtime-gateway | planned |
+| `trip.location.updated.v1` | 6 | `trip_id` | core-api (`App\Domain\Location\LocationSampler`, via the transactional outbox) | realtime-gateway (planned) | live (Phase 4) producer; consumer lands Phase 6 |
 | `trip.completed.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway, payments | planned |
 | `trip.cancelled.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway | planned |
+
+`trip.location.updated.v1` is a **derived** event: it's produced by a Kafka
+*consumer* (of `driver.location.validated.v1`), not by an HTTP request.
+Rather than a direct Kafka publish from within the consumer, it's enqueued
+via the same `outbox_events` table and `outbox:publish` command that
+handles HTTP-triggered events — so the Postgres write (the trip location
+sample + the inbox idempotency record) and the "intent to publish" commit
+atomically in one transaction. Its `causation_id` is the triggering
+`driver.location.validated.v1` event's `event_id` (see
+[event-envelope.md](event-envelope.md)) — the first place in this codebase
+that field is actually populated, since every event before this one has
+been a root event caused directly by an HTTP request.
 
 ## Payments
 

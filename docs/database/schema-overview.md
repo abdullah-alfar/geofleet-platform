@@ -39,6 +39,8 @@ erDiagram
     VEHICLES ||--o{ TRIPS : "used for"
     TRIPS ||--o{ TRIP_STATUS_HISTORY : "logs"
     TRIPS ||--o| PAYMENTS : "settled by"
+    TRIPS ||--o{ TRIP_LOCATION_SAMPLES : "route history"
+    DRIVERS ||--o{ TRIP_LOCATION_SAMPLES : "recorded"
 ```
 
 ## Tables
@@ -56,8 +58,9 @@ erDiagram
 | `trip_status_history` | Append-only log of trip status transitions, for support/audit timelines. |
 | `payments` | One payment per trip (MVP; no split payments yet). |
 | `outbox_events` | Transactional outbox — see [docs/decisions/0001](../decisions/0001-kafka-over-alternative-queues.md) and `App\Domain\Outbox\Outbox`. |
-| `inbox_events` | Idempotency ledger for core-api's own Kafka consumers (added in a later phase; table exists now per the brief's initial schema list). |
+| `inbox_events` | Idempotency ledger for core-api's own Kafka consumers — first used in Phase 4 by `kafka:consume-location-updates`. |
 | `audit_logs` | Polymorphic actor/action/subject audit trail. |
+| `trip_location_samples` | Throttled (not raw) GPS route history for active/completed trips — see [partitioning.md](partitioning.md). Populated by the Phase 4 location consumer, not by any HTTP endpoint. |
 
 ## Notable design decisions
 
@@ -81,3 +84,9 @@ erDiagram
 - **No `sessions` or `cache` tables**: `SESSION_DRIVER` and `CACHE_STORE`
   are both `redis` (see `.env`), so the database-backed equivalents Laravel
   scaffolds by default were removed as dead schema.
+- **`trip_location_samples` is declaratively partitioned** (`PARTITION BY
+  RANGE (recorded_at)`, monthly) and its primary key is `(id, recorded_at)`
+  rather than just `id` — a Postgres requirement for partitioned tables, not
+  a stylistic choice. See [partitioning.md](partitioning.md) for the full
+  reasoning and the operational gap (no automated future-partition
+  creation yet).

@@ -11,12 +11,14 @@ read it before contributing.
 
 ## Status
 
-**Phase 3 of 8: Go location-service.** Local infrastructure (Phase 1) +
-Laravel core-api (Phase 2) + a Go 1.26.3 GPS-ingestion service: validates
-updates (range/staleness/duplicate-sequence/impossible-speed/disabled
-driver-vehicle), publishes to Kafka, and stores the latest location per
-driver in Redis. dispatch-service and realtime-gateway don't exist yet. See
-the phase map in `AGENTS.md`.
+**Phase 4 of 8: Kafka consumers and live location.** Local infrastructure
+(Phase 1) + Laravel core-api (Phase 2) + Go location-service (Phase 3) +
+core-api's `kafka:consume-location-updates`: idempotently samples validated
+GPS updates into a partitioned Postgres table
+(`trip_location_samples`) for active trips, and republishes them as
+trip-keyed `trip.location.updated.v1` events via the transactional outbox.
+dispatch-service and realtime-gateway don't exist yet. See the phase map in
+`AGENTS.md`.
 
 ## Repository layout
 
@@ -106,6 +108,14 @@ unpublished events and sends them to Kafka — see
 
 ```bash
 watch -n 2 php artisan outbox:publish
+```
+
+In a third terminal, run the location consumer (samples validated GPS
+updates for active trips — see
+`app/Console/Commands/ConsumeLocationUpdates.php`):
+
+```bash
+php artisan kafka:consume-location-updates
 ```
 
 The OpenAPI spec for the resulting REST surface is at

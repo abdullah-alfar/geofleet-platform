@@ -16,21 +16,24 @@ the REST API spec.
 
 ```
 app/
-  Console/Commands/PublishOutboxEvents.php   Transactional outbox publisher (`artisan outbox:publish`)
-  Contracts/KafkaProducer.php                Producer interface (rdkafka implementation in Infrastructure/)
-  Domain/Outbox/Outbox.php                   Builds the event envelope + writes outbox_events rows
-  Casts/GeographyPoint.php                   PostGIS geography(Point,4326) <-> App\ValueObjects\GeoPoint
-  Http/Controllers/Api/V1/                   REST endpoints
-  Http/Middleware/AssignCorrelationId.php    Correlation id propagation (requests -> events -> logs)
-  Policies/                                  Per-resource ownership checks (IDOR protection)
-  Support/ApiError.php                       Consistent JSON error envelope for all API exceptions
-database/migrations/                         Schema (see docs/database/schema-overview.md at repo root)
+  Console/Commands/PublishOutboxEvents.php      Transactional outbox publisher (`artisan outbox:publish`)
+  Console/Commands/ConsumeLocationUpdates.php   Location consumer (`artisan kafka:consume-location-updates`)
+  Contracts/KafkaProducer.php                   Producer interface (rdkafka implementation in Infrastructure/)
+  Domain/Outbox/Outbox.php                      Builds the event envelope + writes outbox_events rows
+  Domain/Location/LocationSampler.php           Trip GPS sampling + trip.location.updated.v1 republish decision
+  Casts/GeographyPoint.php                      PostGIS geography(Point,4326) <-> App\ValueObjects\GeoPoint
+  Http/Controllers/Api/V1/                      REST endpoints
+  Http/Middleware/AssignCorrelationId.php       Correlation id propagation (requests -> events -> logs)
+  Policies/                                     Per-resource ownership checks (IDOR protection)
+  Support/ApiError.php                          Consistent JSON error envelope for all API exceptions
+database/migrations/                            Schema (see docs/database/schema-overview.md at repo root)
 ```
 
 ## Local commands
 
 ```bash
-php artisan migrate              # apply schema
-php artisan outbox:publish       # publish unpublished outbox events to Kafka (run on an interval)
+php artisan migrate                        # apply schema
+php artisan outbox:publish                 # publish unpublished outbox events to Kafka (run on an interval)
+php artisan kafka:consume-location-updates # samples trip GPS routes from driver.location.validated.v1 (long-running)
 php artisan route:list --path=api
 ```
