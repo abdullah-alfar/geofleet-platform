@@ -41,4 +41,11 @@ return [
         'db_password' => env('LOCATION_SERVICE_DB_PASSWORD'),
     ],
 
+    // Read/write-scoped Postgres role for apps/dispatch-service (Go). See
+    // database/migrations/*_create_dispatch_service_role.php and
+    // docs/decisions/0005-geohash-and-dispatch-db-access.md.
+    'dispatch_service' => [
+        'db_password' => env('DISPATCH_SERVICE_DB_PASSWORD'),
+    ],
+
 ];
