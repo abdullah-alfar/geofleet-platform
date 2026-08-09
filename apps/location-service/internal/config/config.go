@@ -92,6 +92,7 @@ func Load() (Config, error) {
 
 func requireEnv(key string) (string, error) {
 	v := os.Getenv(key)
+	println("ENV", key, "=", v)
 	if v == "" {
 		return "", fmt.Errorf("required environment variable %s is not set", key)
 	}

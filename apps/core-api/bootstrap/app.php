@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AssignCorrelationId;
+use App\Http\Middleware\EnsureLocalEnvironment;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Support\ApiError;
 use Illuminate\Foundation\Application;
@@ -35,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
+            'local-only' => EnsureLocalEnvironment::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
