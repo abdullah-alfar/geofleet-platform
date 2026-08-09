@@ -1,0 +1,363 @@
+{
+  "info": {
+    "name": "Ride-Hailing Platform",
+    "description": "core-api (Laravel, /api/v1) + location-service (Go, GPS ingestion). Mirrors contracts/openapi/openapi.yaml. Import the accompanying local.postman_environment.json, then run requests top-to-bottom within a folder — register/login requests auto-save tokens and IDs into environment variables that later requests reuse.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api/v1" },
+    { "key": "location_service_url", "value": "http://127.0.0.1:8081" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register Customer",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('customer_email', 'postman.rider+' + Date.now() + '@example.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('customer_token', json.meta.token);",
+                  "pm.environment.set('customer_id', json.data.customer.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Rider\",\n  \"email\": \"{{customer_email}}\",\n  \"phone\": \"+96279{{$randomInt}}\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\",\n  \"role\": \"customer\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] },
+            "description": "Sets {{customer_email}} in a pre-request script so the 'Login' request below can reuse the exact same address."
+          }
+        },
+        {
+          "name": "Register Driver",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('driver_token', json.meta.token);",
+                  "pm.environment.set('driver_id', json.data.driver.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Driver\",\n  \"email\": \"postman.driver+{{$timestamp}}@example.com\",\n  \"phone\": \"+96278{{$randomInt}}\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\",\n  \"role\": \"driver\",\n  \"license_number\": \"LIC-{{$randomInt}}\",\n  \"license_expires_at\": \"2030-01-01\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('customer_token', pm.response.json().meta.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer_email}}\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+            "description": "Reuses {{customer_email}} captured by 'Register Customer' above — run that first, or this has no account to log into."
+          }
+        },
+        {
+          "name": "Me (Customer)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Me (Driver)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driver_token}}" }] },
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drivers",
+      "item": [
+        {
+          "name": "Add Vehicle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('vehicle_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driver_token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"make\": \"Toyota\",\n  \"model\": \"Corolla\",\n  \"year\": 2022,\n  \"color\": \"White\",\n  \"plate_number\": \"PM-{{$randomInt}}\",\n  \"vehicle_type\": \"sedan\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/drivers/vehicles", "host": ["{{base_url}}"], "path": ["drivers", "vehicles"] }
+          }
+        },
+        {
+          "name": "List Vehicles",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driver_token}}" }] },
+            "url": { "raw": "{{base_url}}/drivers/vehicles", "host": ["{{base_url}}"], "path": ["drivers", "vehicles"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Driver",
+      "item": [
+        {
+          "name": "Register Device",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('device_id', json.data.id);",
+                  "pm.environment.set('device_token', json.meta.device_token);",
+                  "console.log('Device token (shown once):', json.meta.device_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driver_token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_identifier\": \"postman-device-{{$randomInt}}\",\n  \"platform\": \"android\",\n  \"app_version\": \"1.0.0\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/driver/devices", "host": ["{{base_url}}"], "path": ["driver", "devices"] }
+          }
+        },
+        {
+          "name": "List Devices",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driver_token}}" }] },
+            "url": { "raw": "{{base_url}}/driver/devices", "host": ["{{base_url}}"], "path": ["driver", "devices"] }
+          }
+        },
+        {
+          "name": "Update Availability (go online)",
+          "request": {
+            "method": "PATCH",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{driver_token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"is_available\": true\n}" },
+            "url": { "raw": "{{base_url}}/driver/availability", "host": ["{{base_url}}"], "path": ["driver", "availability"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ride Requests",
+      "item": [
+        {
+          "name": "Create Ride Request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 or 200', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "pm.environment.set('ride_request_id', pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup_lat\": 31.9539,\n  \"pickup_lng\": 35.9106,\n  \"pickup_address\": \"Rainbow St, Amman\",\n  \"dropoff_lat\": 31.9700,\n  \"dropoff_lng\": 35.9500,\n  \"dropoff_address\": \"Abdali, Amman\",\n  \"requested_vehicle_type\": \"sedan\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/ride-requests", "host": ["{{base_url}}"], "path": ["ride-requests"] }
+          }
+        },
+        {
+          "name": "Get Ride Request",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "url": {
+              "raw": "{{base_url}}/ride-requests/{{ride_request_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["ride-requests", "{{ride_request_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Ride Request",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "url": {
+              "raw": "{{base_url}}/ride-requests/{{ride_request_id}}/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["ride-requests", "{{ride_request_id}}", "cancel"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trips",
+      "item": [
+        {
+          "name": "List My Trips",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "url": {
+              "raw": "{{base_url}}/trips?per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["trips"],
+              "query": [{ "key": "per_page", "value": "15" }]
+            }
+          }
+        },
+        {
+          "name": "Get Trip",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "url": {
+              "raw": "{{base_url}}/trips/{{trip_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["trips", "{{trip_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Location Service (Go)",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{location_service_url}}/healthz", "host": ["{{location_service_url}}"], "path": ["healthz"] }
+          }
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{location_service_url}}/readyz", "host": ["{{location_service_url}}"], "path": ["readyz"] }
+          }
+        },
+        {
+          "name": "Metrics (Prometheus)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{location_service_url}}/metrics", "host": ["{{location_service_url}}"], "path": ["metrics"] }
+          }
+        },
+        {
+          "name": "Submit GPS Update",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('gps_recorded_at', new Date().toISOString());",
+                  "pm.environment.set('gps_sequence', Date.now());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{device_token}}" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driver_id\": \"{{driver_id}}\",\n  \"device_id\": \"{{device_id}}\",\n  \"trip_id\": null,\n  \"sequence\": {{gps_sequence}},\n  \"latitude\": 31.9539,\n  \"longitude\": 35.9106,\n  \"accuracy_meters\": 8.5,\n  \"speed_mps\": 12.4,\n  \"heading_degrees\": 140.0,\n  \"recorded_at\": \"{{gps_recorded_at}}\"\n}"
+            },
+            "url": { "raw": "{{location_service_url}}/v1/locations", "host": ["{{location_service_url}}"], "path": ["v1", "locations"] },
+            "description": "Note: driver must be active with an active vehicle, and this device_token must belong to the same driver_id/device_id in the body, or the request is rejected. See apps/location-service/README.md for the full validation pipeline."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cleanup (run last)",
+      "description": "Deliberately kept separate from Auth: revoking the customer token here — instead of right after login — means every other folder can still run top-to-bottom using {{customer_token}} without it being invalidated mid-flow.",
+      "item": [
+        {
+          "name": "Logout (Customer)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{customer_token}}" }] },
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -119,7 +119,18 @@ php artisan kafka:consume-location-updates
 ```
 
 The OpenAPI spec for the resulting REST surface is at
-[contracts/openapi/openapi.yaml](contracts/openapi/openapi.yaml).
+[contracts/openapi/openapi.yaml](contracts/openapi/openapi.yaml). With
+core-api running, an interactive Redoc-rendered version is at
+[http://localhost:8000/docs](http://localhost:8000/docs) (local
+environment only — 404s otherwise).
+
+A ready-to-import Postman collection covering both core-api and
+location-service is at
+[contracts/postman/](contracts/postman/ridehailing-platform.postman_collection.json)
+— import it along with
+[local.postman_environment.json](contracts/postman/local.postman_environment.json)
+and run requests top-to-bottom within a folder; register/login requests
+auto-capture tokens and IDs for later requests to reuse.
 
 ## Quick start (location-service)
 

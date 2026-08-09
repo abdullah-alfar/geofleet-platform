@@ -12,6 +12,12 @@ idempotency, atomic ride acceptance, UUID public identifiers), and
 [contracts/openapi/openapi.yaml](../../contracts/openapi/openapi.yaml) for
 the REST API spec.
 
+With the app running, `GET /docs` renders that spec as interactive Redoc
+documentation (local environment only — see
+`App\Http\Middleware\EnsureLocalEnvironment`), and
+[contracts/postman/](../../contracts/postman/) has a ready-to-import
+Postman collection covering the same endpoints.
+
 ## Structure
 
 ```
