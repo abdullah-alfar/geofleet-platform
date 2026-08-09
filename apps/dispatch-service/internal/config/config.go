@@ -47,11 +47,6 @@ type Config struct {
 	OfferTTL            time.Duration
 	MaxOfferAttempts    int
 	ExpirySweepInterval time.Duration
-
-	// Used only to approximate estimated-arrival-time as one ranking input
-	// (distance / average speed) — not a routing engine. ~30 km/h, a
-	// reasonable urban average with traffic.
-	AverageSpeedMPS float64
 }
 
 func Load() (Config, error) {
@@ -86,8 +81,6 @@ func Load() (Config, error) {
 		OfferTTL:            getDuration("OFFER_TTL", 15*time.Second),
 		MaxOfferAttempts:    getInt("MAX_OFFER_ATTEMPTS", 5),
 		ExpirySweepInterval: getDuration("EXPIRY_SWEEP_INTERVAL", 2*time.Second),
-
-		AverageSpeedMPS: getFloat("AVERAGE_SPEED_MPS", 8.3),
 	}
 
 	return cfg, nil
@@ -112,15 +105,6 @@ func getDuration(key string, fallback time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
-		}
-	}
-	return fallback
-}
-
-func getFloat(key string, fallback float64) float64 {
-	if v := os.Getenv(key); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
 		}
 	}
 	return fallback

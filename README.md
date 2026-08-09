@@ -11,13 +11,13 @@ read it before contributing.
 
 ## Status
 
-**Phase 4 of 8: Kafka consumers and live location.** Local infrastructure
-(Phase 1) + Laravel core-api (Phase 2) + Go location-service (Phase 3) +
-core-api's `kafka:consume-location-updates`: idempotently samples validated
-GPS updates into a partitioned Postgres table
-(`trip_location_samples`) for active trips, and republishes them as
-trip-keyed `trip.location.updated.v1` events via the transactional outbox.
-dispatch-service and realtime-gateway don't exist yet. See the phase map in
+**Phase 5 of 8: Go dispatch-service.** Local infrastructure (Phase 1) +
+Laravel core-api (Phase 2) + Go location-service (Phase 3) + core-api's
+location consumer (Phase 4) + Go dispatch-service: matches ride requests to
+nearby available drivers via a pure-Go geohash index, ranks candidates
+through a pluggable interface, creates and expires ride offers, and
+performs the atomic accept transaction that guarantees exactly one driver
+wins a ride. realtime-gateway doesn't exist yet. See the phase map in
 `AGENTS.md`.
 
 ## Repository layout
@@ -148,6 +148,25 @@ go run ./cmd/location-service
 See [apps/location-service/README.md](apps/location-service/README.md) for
 the validation pipeline, Kafka topics, Redis key schema, and a sample
 `curl` request.
+
+## Quick start (dispatch-service)
+
+Requires Go 1.26.3. Run after core-api's migrations have been applied
+(they create the write-scoped `dispatch_service` Postgres role this
+service connects with) — and ideally after location-service, so there's
+real driver location data to match against.
+
+```bash
+cd apps/dispatch-service
+cp .env.example .env
+export $(grep -v '^#' .env | xargs)
+go run ./cmd/dispatch-service
+```
+
+See [apps/dispatch-service/README.md](apps/dispatch-service/README.md) for
+the matching cycle, the atomic-acceptance transaction, and the geohash
+indexing strategy (and why it's geohash instead of H3 — see also
+[docs/decisions/0005](docs/decisions/0005-geohash-and-dispatch-db-access.md)).
 
 ## Documentation
 
