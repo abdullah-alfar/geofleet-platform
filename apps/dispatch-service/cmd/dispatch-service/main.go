@@ -84,7 +84,7 @@ func run() error {
 		MaxOfferAttempts: cfg.MaxOfferAttempts,
 	}, logger, m)
 
-	offerService := offers.New(offerStore, matcher, publisher, m, logger)
+	offerService := offers.New(offerStore, index, matcher, publisher, m, logger)
 
 	sweeper := expiry.New(offerStore, matcher, cfg.ExpirySweepInterval, m, logger)
 	go sweeper.Run(ctx)

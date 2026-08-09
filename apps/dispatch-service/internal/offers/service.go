@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"dispatch-service/internal/driverindex"
 	"dispatch-service/internal/kafka"
 	"dispatch-service/internal/matching"
 	"dispatch-service/internal/metrics"
@@ -20,14 +21,15 @@ var ErrOfferNotAvailable = offerstore.ErrAlreadyClosed
 
 type Service struct {
 	store     *offerstore.Store
+	index     *driverindex.Store
 	matcher   *matching.Matcher
 	publisher kafka.Publisher
 	metrics   *metrics.Metrics
 	logger    *slog.Logger
 }
 
-func New(store *offerstore.Store, matcher *matching.Matcher, publisher kafka.Publisher, m *metrics.Metrics, logger *slog.Logger) *Service {
-	return &Service{store: store, matcher: matcher, publisher: publisher, metrics: m, logger: logger}
+func New(store *offerstore.Store, index *driverindex.Store, matcher *matching.Matcher, publisher kafka.Publisher, m *metrics.Metrics, logger *slog.Logger) *Service {
+	return &Service{store: store, index: index, matcher: matcher, publisher: publisher, metrics: m, logger: logger}
 }
 
 // Accept claims the offer and the ride atomically (see
@@ -46,6 +48,19 @@ func (s *Service) Accept(ctx context.Context, offerUUID, driverUUID string, driv
 
 	s.metrics.OffersAccepted.Inc()
 	s.logger.Info("offers: accepted", "offer_id", offerUUID, "ride_request_id", result.RideRequestUUID, "driver_id", driverUUID)
+
+	// A driver who just accepted a ride must stop being a dispatch
+	// candidate for anything else — otherwise they could be offered (and
+	// accept) a second, unrelated ride while already committed to this
+	// one. This is dispatch-service's own "currently assigned" notion in
+	// the geo-index, independent of drivers.is_available in Postgres
+	// (core-api's own shift on/off toggle). There's no trip-completion
+	// flow yet (Phase 6) to automatically bring them back — for now a
+	// driver re-enters candidacy the next time they call PATCH
+	// /api/v1/driver/availability.
+	if err := s.index.SetAvailability(ctx, driverUUID, false); err != nil {
+		s.logger.Error("offers: failed to remove driver from geo-index after acceptance", "driver_id", driverUUID, "error", err)
+	}
 
 	s.publish(ctx, "ride.offer.accepted.v1", "ride.offer.accepted", result.RideRequestUUID, result.RegionID, correlationID,
 		map[string]string{"ride_request_id": result.RideRequestUUID, "offer_id": offerUUID, "driver_id": driverUUID})

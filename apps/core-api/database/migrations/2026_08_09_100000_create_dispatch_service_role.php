@@ -20,6 +20,10 @@ return new class extends Migration
      *   (candidate lookup, vehicle-type filtering, ranking inputs, and
      *   device-token auth for the accept/reject HTTP endpoints — reusing
      *   location-service's exact device-auth pattern).
+     * - SELECT on customers, but only (id, uuid) — the atomic-acceptance
+     *   transaction resolves the ride's customer_id to its public uuid for
+     *   the ride.assigned.v1 payload; it never needs rating or anything
+     *   else on that row.
      * - UPDATE on ride_requests, but ONLY the columns the atomic-acceptance
      *   transition touches (status, driver_id, accepted_at) — column-level
      *   GRANT, not table-wide. Cannot touch pickup/dropoff, payment-adjacent
@@ -27,8 +31,7 @@ return new class extends Migration
      * - SELECT, INSERT, UPDATE on ride_offers — the one table this service
      *   owns outright.
      *
-     * No access to customers, payments, trips, audit_logs, or anything
-     * else.
+     * No access to payments, trips, audit_logs, or anything else.
      */
     public function up(): void
     {
@@ -54,6 +57,7 @@ return new class extends Migration
         DB::statement('GRANT USAGE ON SCHEMA public TO dispatch_service');
 
         DB::statement('GRANT SELECT ON ride_requests, drivers, vehicles, driver_devices TO dispatch_service');
+        DB::statement('GRANT SELECT (id, uuid) ON customers TO dispatch_service');
         DB::statement('GRANT UPDATE (status, driver_id, accepted_at) ON ride_requests TO dispatch_service');
 
         DB::statement('GRANT SELECT, INSERT, UPDATE ON ride_offers TO dispatch_service');
@@ -65,6 +69,7 @@ return new class extends Migration
         DB::statement('REVOKE ALL ON ride_offers FROM dispatch_service');
         DB::statement('REVOKE ALL ON SEQUENCE ride_offers_id_seq FROM dispatch_service');
         DB::statement('REVOKE UPDATE (status, driver_id, accepted_at) ON ride_requests FROM dispatch_service');
+        DB::statement('REVOKE SELECT (id, uuid) ON customers FROM dispatch_service');
         DB::statement('REVOKE SELECT ON ride_requests, drivers, vehicles, driver_devices FROM dispatch_service');
         DB::statement('REVOKE USAGE ON SCHEMA public FROM dispatch_service');
 
