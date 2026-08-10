@@ -29,6 +29,7 @@ import (
 	"dispatch-service/internal/offers"
 	"dispatch-service/internal/offerstore"
 	"dispatch-service/internal/ranking"
+	"dispatch-service/internal/reliability"
 )
 
 func main() {
@@ -89,6 +90,14 @@ func run() error {
 	sweeper := expiry.New(offerStore, matcher, cfg.ExpirySweepInterval, m, logger)
 	go sweeper.Run(ctx)
 
+	// A failed match attempt means a ride never gets matched — real,
+	// unrecoverable loss if just logged and dropped. WithRetryTopic routes
+	// exhausted failures to ride.requested.v1.retry instead (see
+	// internal/reliability and docs/decisions/0007). The other two topics
+	// only ever touch Redis and are idempotent/self-healing by construction
+	// (internal/indexconsumers) — no retry topic needed for those.
+	rideRequestedHandler := matching.NewRideRequestedHandler(matcher, logger)
+
 	consumer, err := dispatchkafka.NewConsumer(
 		cfg.KafkaBrokers,
 		cfg.ConsumerGroup,
@@ -96,7 +105,7 @@ func run() error {
 		map[string]dispatchkafka.HandlerFunc{
 			"driver.location.validated.v1": indexconsumers.NewLocationHandler(index, logger),
 			"driver.status.changed.v1":     indexconsumers.NewStatusHandler(index, logger),
-			"ride.requested.v1":            matching.NewRideRequestedHandler(matcher, logger),
+			"ride.requested.v1":            reliability.WithRetryTopic("ride.requested.v1", rideRequestedHandler, publisher, logger),
 		},
 		logger,
 	)
@@ -105,6 +114,26 @@ func run() error {
 	}
 	defer consumer.Close()
 	go consumer.Run(ctx)
+
+	// Isolated from the main consumer above on purpose: NewRetryTopicHandler
+	// sleeps a multi-minute backoff between reattempts, which would block
+	// fresh ride.requested.v1 traffic if it ran on the same consumer/
+	// partition. Own consumer group, own goroutine, own (low-volume,
+	// failures-only) topic.
+	retryConsumer, err := dispatchkafka.NewConsumer(
+		cfg.KafkaBrokers,
+		cfg.RetryConsumerGroup,
+		[]string{"ride.requested.v1.retry"},
+		map[string]dispatchkafka.HandlerFunc{
+			"ride.requested.v1.retry": reliability.NewRetryTopicHandler("ride.requested.v1", rideRequestedHandler, publisher, logger),
+		},
+		logger,
+	)
+	if err != nil {
+		return fmt.Errorf("create retry kafka consumer: %w", err)
+	}
+	defer retryConsumer.Close()
+	go retryConsumer.Run(ctx)
 
 	offerHandler := httpapi.NewOfferHandler(offerService, offerStore, logger)
 	healthHandler := httpapi.NewHealthHandler(map[string]httpapi.Pinger{

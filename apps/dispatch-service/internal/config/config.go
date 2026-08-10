@@ -28,6 +28,12 @@ type Config struct {
 	KafkaWriteTimeout time.Duration
 	ConsumerGroup     string
 
+	// Own consumer group for the isolated ride.requested.v1.retry consumer
+	// (see internal/reliability and docs/decisions/0007) — deliberately
+	// separate from ConsumerGroup so a multi-minute retry backoff sleep
+	// never blocks the main topic's partition.
+	RetryConsumerGroup string
+
 	// Geo-cell indexing (geohash — see docs/decisions/0005). Precision 6
 	// gives roughly 1.2km x 0.61km cells: coarse enough that a handful of
 	// neighbors covers a realistic pickup search radius, fine enough that
@@ -72,6 +78,8 @@ func Load() (Config, error) {
 		KafkaBrokers:      splitCSV(getEnv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9094")),
 		KafkaWriteTimeout: getDuration("KAFKA_WRITE_TIMEOUT", 5*time.Second),
 		ConsumerGroup:     getEnv("DISPATCH_CONSUMER_GROUP", "dispatch-service"),
+
+		RetryConsumerGroup: getEnv("DISPATCH_RETRY_CONSUMER_GROUP", "dispatch-service-retry"),
 
 		GeohashPrecision: uint(getInt("GEOHASH_PRECISION", 6)),
 		StaleLocationAge: getDuration("STALE_LOCATION_AGE", 60*time.Second),

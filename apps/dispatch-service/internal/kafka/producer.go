@@ -21,6 +21,12 @@ const (
 
 type Publisher interface {
 	Publish(ctx context.Context, topic, key, eventType, aggregateType, aggregateID, regionID, correlationID string, causationID *string, data any) error
+	// PublishRaw writes a pre-encoded payload with no envelope wrapping —
+	// used only for internal/reliability's retry/DLQ envelopes, which are
+	// deliberately NOT shaped like a domain event (see
+	// docs/decisions/0007-retry-dlq-strategy.md): they're an ops artifact,
+	// not something any other service should ever be a Kafka consumer of.
+	PublishRaw(ctx context.Context, topic, key string, payload []byte) error
 	Ping(ctx context.Context) error
 	Close()
 }
@@ -75,6 +81,19 @@ func (p *FranzPublisher) Publish(
 	result := p.client.ProduceSync(ctx, record)
 	if err := result.FirstErr(); err != nil {
 		return fmt.Errorf("kafka: publish to %s: %w", topic, err)
+	}
+	return nil
+}
+
+func (p *FranzPublisher) PublishRaw(ctx context.Context, topic, key string, payload []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, p.writeTimeout)
+	defer cancel()
+
+	record := &kgo.Record{Topic: topic, Key: []byte(key), Value: payload}
+
+	result := p.client.ProduceSync(ctx, record)
+	if err := result.FirstErr(); err != nil {
+		return fmt.Errorf("kafka: publish raw to %s: %w", topic, err)
 	}
 	return nil
 }

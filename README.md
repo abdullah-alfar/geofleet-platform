@@ -11,16 +11,15 @@ read it before contributing.
 
 ## Status
 
-**Phase 6 of 8: Go realtime-gateway.** Local infrastructure (Phase 1) +
-Laravel core-api (Phase 2) + Go location-service (Phase 3) + core-api's
-location consumer (Phase 4) + Go dispatch-service (Phase 5, matches ride
-requests to nearby available drivers, ranks candidates, creates/expires
-ride offers, performs the atomic accept transaction) + Go realtime-gateway:
-pushes ride offers to drivers and ride outcomes (assigned/unavailable) plus
-the assigned driver's live location to customers over WebSocket, instead
-of polling. Fans out across multiple instances via Redis Pub/Sub. See the
-phase map in `AGENTS.md` and
-[ADR 0006](docs/decisions/0006-realtime-gateway-fanout.md).
+**Phase 7 of 8: Reliability.** Local infrastructure (Phase 1) + Laravel
+core-api (Phase 2) + Go location-service (Phase 3) + core-api's location
+consumer (Phase 4) + Go dispatch-service (Phase 5) + Go realtime-gateway
+(Phase 6) + retry topics, dead-letter queues, and inbox retention for the
+two consumers where a dropped message means real, unrecoverable data loss
+(core-api's trip-route sampler, dispatch-service's ride matcher) — see the
+phase map in `AGENTS.md`,
+[docs/events/retry-and-dlq.md](docs/events/retry-and-dlq.md), and
+[ADR 0007](docs/decisions/0007-retry-dlq-strategy.md).
 
 ## Repository layout
 
@@ -118,6 +117,13 @@ updates for active trips — see
 
 ```bash
 php artisan kafka:consume-location-updates
+```
+
+Optionally, a fourth terminal for its isolated retry-topic consumer (Phase
+7 — see [docs/events/retry-and-dlq.md](docs/events/retry-and-dlq.md)):
+
+```bash
+php artisan kafka:consume-location-updates-retry
 ```
 
 The OpenAPI spec for the resulting REST surface is at

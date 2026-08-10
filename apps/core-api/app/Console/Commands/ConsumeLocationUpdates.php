@@ -2,11 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Contracts\KafkaProducer;
 use App\Domain\Location\LocationSampler;
-use App\Models\InboxEvent;
+use App\Domain\Location\LocationUpdateProcessor;
+use App\Domain\Reliability\RetryEnvelope;
 use App\Support\CorrelationContext;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RdKafka\Conf;
 use RdKafka\KafkaConsumer;
@@ -22,13 +23,15 @@ use Throwable;
  * At-least-once delivery is assumed (AGENTS.md) — every message is
  * deduplicated via the inbox pattern (inbox_events, unique on
  * consumer_name+event_id) before any state change, in the same transaction
- * as that state change.
+ * as that state change. See App\Domain\Location\LocationUpdateProcessor,
+ * shared with the retry-topic consumer below.
  *
- * Retry/DLQ topics are a Phase 7 concern (AGENTS.md: don't build ahead of
- * schedule). For now, a message that fails processing after a few local
- * retries is logged as an error and skipped (offset committed anyway) —
- * better than one poison message blocking this consumer forever with
- * nowhere else for it to go yet.
+ * A message that fails processing after MAX_ATTEMPTS fast local retries is
+ * NOT just logged and dropped (that was a Phase 4-era placeholder — see
+ * git history) — it's published to driver.location.validated.v1.retry for
+ * an isolated, backoff-delayed reattempt by
+ * App\Console\Commands\ConsumeLocationUpdatesRetry. See
+ * docs/decisions/0007-retry-dlq-strategy.md and docs/events/retry-and-dlq.md.
  */
 class ConsumeLocationUpdates extends Command
 {
@@ -42,7 +45,7 @@ class ConsumeLocationUpdates extends Command
 
     private bool $shouldStop = false;
 
-    public function handle(): int
+    public function handle(KafkaProducer $producer): int
     {
         $consumerGroup = config('location.consumer_group');
 
@@ -57,10 +60,10 @@ class ConsumeLocationUpdates extends Command
 
         $this->installSignalHandlers();
 
-        $sampler = new LocationSampler(
+        $processor = new LocationUpdateProcessor(new LocationSampler(
             minIntervalSeconds: config('location.sample_min_interval_seconds'),
             minDistanceMeters: config('location.sample_min_distance_meters'),
-        );
+        ));
 
         Log::info('location_consumer.started', ['topic' => self::TOPIC, 'group' => $consumerGroup]);
         $this->info("Consuming {$consumerGroup} <- ".self::TOPIC.' (Ctrl+C to stop)');
@@ -70,7 +73,7 @@ class ConsumeLocationUpdates extends Command
 
             switch ($message->err) {
                 case RD_KAFKA_RESP_ERR_NO_ERROR:
-                    $this->processMessage($message, $sampler, $consumerGroup);
+                    $this->processMessage($message, $processor, $consumerGroup, $producer);
                     $consumer->commit($message);
                     break;
 
@@ -92,7 +95,7 @@ class ConsumeLocationUpdates extends Command
         return self::SUCCESS;
     }
 
-    private function processMessage(\RdKafka\Message $message, LocationSampler $sampler, string $consumerGroup): void
+    private function processMessage(\RdKafka\Message $message, LocationUpdateProcessor $processor, string $consumerGroup, KafkaProducer $producer): void
     {
         $start = microtime(true);
 
@@ -107,25 +110,13 @@ class ConsumeLocationUpdates extends Command
         ));
 
         $attempt = 0;
+        $lastError = null;
 
         while (true) {
             $attempt++;
 
             try {
-                DB::transaction(function () use ($envelope, $sampler, $consumerGroup) {
-                    if (InboxEvent::where('consumer_name', $consumerGroup)
-                        ->where('event_id', $envelope['event_id'])
-                        ->exists()) {
-                        return; // already processed — redelivery, safe no-op
-                    }
-
-                    InboxEvent::create([
-                        'consumer_name' => $consumerGroup,
-                        'event_id' => $envelope['event_id'],
-                    ]);
-
-                    $sampler->handle($envelope['data'], $envelope['event_id']);
-                });
+                $processor->process($envelope, $consumerGroup);
 
                 Log::info('location_consumer.processed', [
                     'event_id' => $envelope['event_id'],
@@ -134,17 +125,43 @@ class ConsumeLocationUpdates extends Command
                 ]);
                 return;
             } catch (Throwable $e) {
+                $lastError = $e->getMessage();
+
                 if ($attempt >= self::MAX_ATTEMPTS) {
                     Log::error('location_consumer.processing_failed', [
                         'event_id' => $envelope['event_id'],
                         'attempts' => $attempt,
-                        'error' => $e->getMessage(),
+                        'error' => $lastError,
                     ]);
-                    return; // give up on this message; offset still commits
+
+                    $this->routeToRetryTopic($envelope, $message, $lastError, $producer);
+                    return; // offset still commits — the retry topic owns it now
                 }
 
                 usleep(200_000 * $attempt); // short backoff: 200ms, 400ms
             }
+        }
+    }
+
+    private function routeToRetryTopic(array $envelope, \RdKafka\Message $message, string $lastError, KafkaProducer $producer): void
+    {
+        $retryEnvelope = RetryEnvelope::first(self::TOPIC, $lastError, $envelope);
+
+        try {
+            $producer->publish(
+                topic: self::TOPIC.'.retry',
+                key: (string) $message->key,
+                payload: $retryEnvelope->toJson(),
+            );
+        } catch (Throwable $e) {
+            // Nowhere else for this message to go — log loudly so it's not
+            // silently lost. A future replay would need to come from
+            // whatever alerting picks up this log line, since it never
+            // made it to a retry/DLQ topic at all.
+            Log::error('location_consumer.retry_publish_failed', [
+                'event_id' => $envelope['event_id'],
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

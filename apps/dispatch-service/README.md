@@ -23,6 +23,7 @@ internal/
   offerstore/       Write-scoped Postgres: ride_offers + the atomic accept transaction
   offers/           Accept/reject business logic + event publishing
   expiry/           Background sweep that expires stale offers and re-triggers matching
+  reliability/       Retry-topic/DLQ wrapper for ride.requested.v1 (see docs/decisions/0007)
   kafka/            franz-go producer/consumer wrappers
   httpapi/          HTTP server: accept/reject/list-pending endpoints, health/readiness
   metrics/          Prometheus metrics (own registry)
@@ -73,6 +74,19 @@ Consumes `driver.location.validated.v1`, `driver.status.changed.v1`, and
 [docs/events/topic-catalog.md](../../docs/events/topic-catalog.md) for the
 full producer/consumer map and why there's no `ride.offer.expired.v1` or
 `ride.cancelled.v1` topic.
+
+## Retry/DLQ (`internal/reliability`)
+
+A `ride.requested.v1` message that fails after retrying is routed to
+`ride.requested.v1.retry` rather than logged and dropped — a match that
+never happens means a ride that never gets a driver. `main.go` runs a
+**second**, isolated `kafka.Consumer` (own consumer group,
+`DISPATCH_RETRY_CONSUMER_GROUP`) for that retry topic specifically so its
+multi-minute backoff sleeps never block live `ride.requested.v1` traffic.
+See [docs/events/retry-and-dlq.md](../../docs/events/retry-and-dlq.md) and
+[ADR 0007](../../docs/decisions/0007-retry-dlq-strategy.md). The other two
+topics this service consumes don't get a retry topic — Redis writes there
+are idempotent and self-healing (ADR 0005/0007).
 
 ## Running locally
 

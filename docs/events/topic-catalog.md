@@ -7,10 +7,12 @@ producer publishing to a topic not listed here will fail rather than
 silently create it. See [event-envelope.md](event-envelope.md) for the
 message shape every topic uses.
 
-Retry and dead-letter topics are intentionally **not** in this catalog yet
-— that's Phase 7 (Reliability), documented in
-[retry-and-dlq.md](retry-and-dlq.md) when it exists. Don't add
-`.retry`/`.dlq` topics ahead of that phase.
+Retry and dead-letter topics exist only for the two consumers where a
+permanently dropped message means real, unrecoverable data loss — not for
+every topic in this catalog. See the "Reliability topics" section below,
+[retry-and-dlq.md](retry-and-dlq.md), and
+[ADR 0007](../decisions/0007-retry-dlq-strategy.md) for the design and the
+scoping rationale.
 
 ## Status legend
 
@@ -23,7 +25,7 @@ Retry and dead-letter topics are intentionally **not** in this catalog yet
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
 | `driver.location.received.v1` | 6 | `driver_id` | location-service | none yet | live (Phase 3) — best-effort raw/audit stream, see [apps/location-service/README.md](../../apps/location-service/README.md) |
-| `driver.location.validated.v1` | 6 | `driver_id` | location-service | core-api (`kafka:consume-location-updates`), dispatch-service, realtime-gateway | live (Phase 3 producer, Phase 4/5/6 consumers) — see [apps/core-api's ConsumeLocationUpdates](../../apps/core-api/app/Console/Commands/ConsumeLocationUpdates.php). realtime-gateway relays it to a customer only while their ride's driver has an active assignment (see [ADR 0006](../decisions/0006-realtime-gateway-fanout.md)) — most events have no eligible recipient and are a no-op. |
+| `driver.location.validated.v1` | 6 | `driver_id` | location-service | core-api (`kafka:consume-location-updates`), dispatch-service, realtime-gateway | live (Phase 3 producer, Phase 4/5/6 consumers) — see [apps/core-api's ConsumeLocationUpdates](../../apps/core-api/app/Console/Commands/ConsumeLocationUpdates.php). realtime-gateway relays it to a customer only while their ride's driver has an active assignment (see [ADR 0006](../decisions/0006-realtime-gateway-fanout.md)) — most events have no eligible recipient and are a no-op. core-api's consumer has a retry/DLQ pair as of Phase 7 (see below) — dispatch-service's and realtime-gateway's consumers don't need one (self-healing / best-effort, see ADR 0007). |
 | `driver.status.changed.v1` | 3 | `driver_id` | core-api (`PATCH /api/v1/driver/availability`) | dispatch-service | live (Phase 2 producer, Phase 5 consumer) |
 
 Why `driver_id` as the key for all three: every update for one driver must
@@ -36,7 +38,7 @@ availability/location changes in a consistent order.
 
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
-| `ride.requested.v1` | 3 | `ride_request_id` | core-api (`POST /api/v1/ride-requests`) | dispatch-service, realtime-gateway | live (Phase 2 producer, Phase 5/6 consumers) — realtime-gateway only reads it to record a `ride_request_id -> customer_id` correlation (see ADR 0006), it doesn't act on it otherwise |
+| `ride.requested.v1` | 3 | `ride_request_id` | core-api (`POST /api/v1/ride-requests`) | dispatch-service, realtime-gateway | live (Phase 2 producer, Phase 5/6 consumers) — realtime-gateway only reads it to record a `ride_request_id -> customer_id` correlation (see ADR 0006), it doesn't act on it otherwise. dispatch-service's matching consumer has a retry/DLQ pair as of Phase 7 (see below); realtime-gateway's doesn't need one (see ADR 0007). |
 | `ride.search.started.v1` | 3 | `ride_request_id` | dispatch-service | — | live (Phase 5) — published once, on the first matching cycle for a ride request |
 | `ride.offer.created.v1` | 3 | `ride_request_id` | dispatch-service | realtime-gateway | live (Phase 5 producer, Phase 6 consumer) — pushed to the offered driver over WebSocket, replacing/supplementing the `GET /v1/ride-offers/pending` poll |
 | `ride.offer.accepted.v1` | 3 | `ride_request_id` | dispatch-service | — | live (Phase 5) |
@@ -113,3 +115,19 @@ been a root event caused directly by an HTTP request.
 
 Unkeyed deliberately: notification volume should spread across partitions
 rather than concentrate on whichever recipient happens to be most active.
+
+## Reliability topics
+
+| Topic | Partitions | Key | Producer | Consumer | Status |
+|---|---|---|---|---|---|
+| `driver.location.validated.v1.retry` | 1 | same as source | core-api (`kafka:consume-location-updates`) | core-api (`kafka:consume-location-updates-retry`) | live (Phase 7) |
+| `driver.location.validated.v1.dlq` | 1 | same as source | core-api (`kafka:consume-location-updates-retry`) | none (manual replay) | live (Phase 7) |
+| `ride.requested.v1.retry` | 1 | same as source | dispatch-service | dispatch-service (isolated `dispatch-service-retry` consumer group) | live (Phase 7) |
+| `ride.requested.v1.dlq` | 1 | same as source | dispatch-service | none (manual replay) | live (Phase 7) |
+
+Low partition count deliberately — these only ever carry failure volume,
+never production traffic. See [retry-and-dlq.md](retry-and-dlq.md) for the
+envelope shape and replay procedure, and
+[ADR 0007](../decisions/0007-retry-dlq-strategy.md) for why only these two
+source topics have a retry/DLQ pair (every other consumer in this catalog
+is either self-healing or has a documented client-side fallback).

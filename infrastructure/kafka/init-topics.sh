@@ -42,6 +42,16 @@ TOPICS=(
   "payment.failed.v1:3:1"
 
   "notification.requested.v1:3:1"
+
+  # Retry/DLQ topics (Phase 7 — see docs/events/retry-and-dlq.md and
+  # docs/decisions/0007-retry-dlq-strategy.md). Deliberately not created for
+  # every topic in this catalog — only for consumers where a permanently
+  # dropped message means real, unrecoverable data loss. Low partition
+  # count: these only ever carry failure volume, never production traffic.
+  "driver.location.validated.v1.retry:1:1"
+  "driver.location.validated.v1.dlq:1:1"
+  "ride.requested.v1.retry:1:1"
+  "ride.requested.v1.dlq:1:1"
 )
 
 for entry in "${TOPICS[@]}"; do
