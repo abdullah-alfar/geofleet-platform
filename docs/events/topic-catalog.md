@@ -23,7 +23,7 @@ Retry and dead-letter topics are intentionally **not** in this catalog yet
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
 | `driver.location.received.v1` | 6 | `driver_id` | location-service | none yet | live (Phase 3) — best-effort raw/audit stream, see [apps/location-service/README.md](../../apps/location-service/README.md) |
-| `driver.location.validated.v1` | 6 | `driver_id` | location-service | core-api (`kafka:consume-location-updates`), dispatch-service (planned) | live (Phase 3 producer, Phase 4 consumer) — see [apps/core-api's ConsumeLocationUpdates](../../apps/core-api/app/Console/Commands/ConsumeLocationUpdates.php) |
+| `driver.location.validated.v1` | 6 | `driver_id` | location-service | core-api (`kafka:consume-location-updates`), dispatch-service, realtime-gateway | live (Phase 3 producer, Phase 4/5/6 consumers) — see [apps/core-api's ConsumeLocationUpdates](../../apps/core-api/app/Console/Commands/ConsumeLocationUpdates.php). realtime-gateway relays it to a customer only while their ride's driver has an active assignment (see [ADR 0006](../decisions/0006-realtime-gateway-fanout.md)) — most events have no eligible recipient and are a no-op. |
 | `driver.status.changed.v1` | 3 | `driver_id` | core-api (`PATCH /api/v1/driver/availability`) | dispatch-service | live (Phase 2 producer, Phase 5 consumer) |
 
 Why `driver_id` as the key for all three: every update for one driver must
@@ -36,13 +36,13 @@ availability/location changes in a consistent order.
 
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
-| `ride.requested.v1` | 3 | `ride_request_id` | core-api (`POST /api/v1/ride-requests`) | dispatch-service | live (Phase 2 producer, Phase 5 consumer) |
+| `ride.requested.v1` | 3 | `ride_request_id` | core-api (`POST /api/v1/ride-requests`) | dispatch-service, realtime-gateway | live (Phase 2 producer, Phase 5/6 consumers) — realtime-gateway only reads it to record a `ride_request_id -> customer_id` correlation (see ADR 0006), it doesn't act on it otherwise |
 | `ride.search.started.v1` | 3 | `ride_request_id` | dispatch-service | — | live (Phase 5) — published once, on the first matching cycle for a ride request |
-| `ride.offer.created.v1` | 3 | `ride_request_id` | dispatch-service | realtime-gateway (planned) | live (Phase 5) producer; consumer lands Phase 6 |
+| `ride.offer.created.v1` | 3 | `ride_request_id` | dispatch-service | realtime-gateway | live (Phase 5 producer, Phase 6 consumer) — pushed to the offered driver over WebSocket, replacing/supplementing the `GET /v1/ride-offers/pending` poll |
 | `ride.offer.accepted.v1` | 3 | `ride_request_id` | dispatch-service | — | live (Phase 5) |
 | `ride.offer.rejected.v1` | 3 | `ride_request_id` | dispatch-service | — | live (Phase 5) |
-| `ride.assigned.v1` | 3 | `ride_request_id` | dispatch-service | core-api (planned), realtime-gateway (planned) | live (Phase 5) producer; consumers land later |
-| `ride.unavailable.v1` | 3 | `ride_request_id` | dispatch-service | core-api (planned), realtime-gateway (planned) | live (Phase 5) producer; consumers land later |
+| `ride.assigned.v1` | 3 | `ride_request_id` | dispatch-service | realtime-gateway; core-api (planned) | live (Phase 5 producer, Phase 6 consumer) — pushed to the customer over WebSocket; core-api doesn't consume it yet (no trip-creation flow exists — see ADR 0006) |
+| `ride.unavailable.v1` | 3 | `ride_request_id` | dispatch-service | realtime-gateway; core-api (planned) | live (Phase 5 producer, Phase 6 consumer) — pushed to the customer over WebSocket, routed via realtime-gateway's own `ride.requested.v1`-derived correlation since this event doesn't carry `customer_id` (see below and ADR 0006) |
 
 Why `ride_request_id` as the key: all lifecycle events for one ride must be
 processed in order by one dispatch-service consumer instance to prevent
@@ -80,10 +80,10 @@ publishes.
 
 | Topic | Partitions | Key | Producer | Consumer | Status |
 |---|---|---|---|---|---|
-| `trip.started.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway | planned |
-| `trip.location.updated.v1` | 6 | `trip_id` | core-api (`App\Domain\Location\LocationSampler`, via the transactional outbox) | realtime-gateway (planned) | live (Phase 4) producer; consumer lands Phase 6 |
-| `trip.completed.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway, payments | planned |
-| `trip.cancelled.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway | planned |
+| `trip.started.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway (planned) | planned |
+| `trip.location.updated.v1` | 6 | `trip_id` | core-api (`App\Domain\Location\LocationSampler`, via the transactional outbox) | realtime-gateway (planned) | producer marked "live" at the code level since Phase 4, but never actually fires: `LocationSampler` requires an existing `trips` row with `status = 'in_progress'`, and nothing in core-api creates `trips` rows yet (no `ride.assigned.v1` consumer exists there — see ADR 0006). realtime-gateway does not consume this topic as of Phase 6, deliberately — wiring a consumer for an event that can never arrive would be untested, unverifiable code. It instead relays live driver location straight from `driver.location.validated.v1` using its own `ride.assigned.v1`-derived correlation (see ADR 0006). Revisit once core-api's trip-creation flow makes this topic real. |
+| `trip.completed.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway (planned), payments | planned |
+| `trip.cancelled.v1` | 3 | `trip_id` | core-api (planned) | realtime-gateway (planned) | planned |
 
 `trip.location.updated.v1` is a **derived** event: it's produced by a Kafka
 *consumer* (of `driver.location.validated.v1`), not by an HTTP request.

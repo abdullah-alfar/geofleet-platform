@@ -48,4 +48,11 @@ return [
         'db_password' => env('DISPATCH_SERVICE_DB_PASSWORD'),
     ],
 
+    // Read-only Postgres role for apps/realtime-gateway (Go). See
+    // database/migrations/*_create_realtime_gateway_role.php and
+    // docs/decisions/0006-realtime-gateway-fanout.md.
+    'realtime_gateway' => [
+        'db_password' => env('REALTIME_GATEWAY_DB_PASSWORD'),
+    ],
+
 ];

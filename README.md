@@ -11,14 +11,16 @@ read it before contributing.
 
 ## Status
 
-**Phase 5 of 8: Go dispatch-service.** Local infrastructure (Phase 1) +
+**Phase 6 of 8: Go realtime-gateway.** Local infrastructure (Phase 1) +
 Laravel core-api (Phase 2) + Go location-service (Phase 3) + core-api's
-location consumer (Phase 4) + Go dispatch-service: matches ride requests to
-nearby available drivers via a pure-Go geohash index, ranks candidates
-through a pluggable interface, creates and expires ride offers, and
-performs the atomic accept transaction that guarantees exactly one driver
-wins a ride. realtime-gateway doesn't exist yet. See the phase map in
-`AGENTS.md`.
+location consumer (Phase 4) + Go dispatch-service (Phase 5, matches ride
+requests to nearby available drivers, ranks candidates, creates/expires
+ride offers, performs the atomic accept transaction) + Go realtime-gateway:
+pushes ride offers to drivers and ride outcomes (assigned/unavailable) plus
+the assigned driver's live location to customers over WebSocket, instead
+of polling. Fans out across multiple instances via Redis Pub/Sub. See the
+phase map in `AGENTS.md` and
+[ADR 0006](docs/decisions/0006-realtime-gateway-fanout.md).
 
 ## Repository layout
 
@@ -27,7 +29,7 @@ apps/
   core-api/            Laravel 13 — business logic, outbox, admin (Phase 2)
   location-service/    Go 1.26.3 — GPS ingestion (Phase 3)
   dispatch-service/    Go 1.26.3 — driver matching (Phase 5)
-  realtime-gateway/     Go 1.26.3 — WebSockets (Phase 6)
+  realtime-gateway/    Go 1.26.3 — WebSockets, fan-out (Phase 6)
 contracts/
   events/               Event schemas shared across services
   openapi/              REST API specification
@@ -167,6 +169,26 @@ See [apps/dispatch-service/README.md](apps/dispatch-service/README.md) for
 the matching cycle, the atomic-acceptance transaction, and the geohash
 indexing strategy (and why it's geohash instead of H3 — see also
 [docs/decisions/0005](docs/decisions/0005-geohash-and-dispatch-db-access.md)).
+
+## Quick start (realtime-gateway)
+
+Requires Go 1.26.3. Run after core-api's migrations have been applied
+(they create the read-only `realtime_gateway` Postgres role this service
+connects with) — and ideally after dispatch-service, so there are
+ride-lifecycle events to relay.
+
+```bash
+cd apps/realtime-gateway
+cp .env.example .env
+export $(grep -v '^#' .env | xargs)
+go run ./cmd/realtime-gateway
+```
+
+See [apps/realtime-gateway/README.md](apps/realtime-gateway/README.md) for
+the WebSocket auth reuse, the Redis Pub/Sub fan-out design, and the two
+correlation mappings that route events which don't carry a customer id
+(and why — see also
+[docs/decisions/0006](docs/decisions/0006-realtime-gateway-fanout.md)).
 
 ## Documentation
 
