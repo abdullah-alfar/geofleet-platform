@@ -31,7 +31,10 @@ export const validationSchema = Joi.object({
   CORE_API_BASE_URL: Joi.string().uri().required(),
   CORE_API_TIMEOUT_MS: Joi.number().integer().positive().default(3000),
 
-  // Not connected to until Phase 3 creates the admin_api role/schema — see
-  // src/health/health.module.ts for why no Postgres indicator exists yet.
-  ADMIN_API_POSTGRES_DSN: Joi.string().allow('').default(''),
+  // Required as of Phase 2 (auth-only: verifies Sanctum tokens against the
+  // admin_api role — see docs/decisions/0009-admin-identity.md). The
+  // broader admin_read schema for Kafka projections is still Phase 3.
+  ADMIN_API_POSTGRES_DSN: Joi.string()
+    .uri({ scheme: ['postgres', 'postgresql'] })
+    .required(),
 });

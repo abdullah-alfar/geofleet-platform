@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
@@ -40,6 +40,23 @@ async function bootstrap(): Promise<void> {
       transform: true,
     }),
   );
+
+  // Every business endpoint lives under /api/v1/admin/*; /health, /ready,
+  // and /metrics stay unprefixed — they're infrastructure endpoints an
+  // orchestrator/scraper polls, not part of the versioned admin API
+  // surface (same reasoning core-api keeps its own /up outside /api/v1).
+  // Object form is the more precise (method-scoped) syntax; Nest 11's
+  // internal exclusion handling still logs a benign "Unsupported route
+  // path" warning on this path-to-regexp version regardless — it
+  // auto-converts and works correctly (verified: /health/ready/metrics
+  // stay unprefixed, everything else requires the prefix).
+  app.setGlobalPrefix('api/v1/admin', {
+    exclude: [
+      { path: 'health', method: RequestMethod.GET },
+      { path: 'ready', method: RequestMethod.GET },
+      { path: 'metrics', method: RequestMethod.GET },
+    ],
+  });
 
   // Local-environment-only, same gate core-api's GET /docs uses
   // (App\Http\Middleware\EnsureLocalEnvironment).

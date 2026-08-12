@@ -14,8 +14,10 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 1 of 8 — foundation only.** No business modules, no
-authentication, no database, no Kafka consumers yet — see
+**Status: Phase 2 of 8 — authentication and permissions.** Admin identity
+verified directly against Postgres (no call back into core-api), Sanctum-
+token-abilities-based permission checks. No database of its own, no Kafka
+consumers, no business query/command endpoints yet — see
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
 full phase plan.
 
@@ -23,37 +25,37 @@ full phase plan.
 
 ```
 src/
-  main.ts                    Bootstrap: helmet, CORS, body limits, global pipe, Swagger, listen
-  app.module.ts               Root wiring: config, logger, throttler, health, metrics
+  main.ts                    Bootstrap: helmet, CORS, body limits, global pipe, Swagger, global prefix, listen
+  app.module.ts               Root wiring: config, logger, throttler, postgres, health, metrics, audit, auth
   config/                     Joi-validated environment config (fails fast on boot)
   common/
     middleware/                Correlation-ID middleware
     interceptors/               Response envelope ({ data: ... })
     filters/                     Global exception filter ({ error: { code, message, correlation_id } })
-    types/                       Express Request augmentation (correlationId)
-  health/                      /health (liveness), /ready (Redis/Kafka/core-api indicators)
+    types/                       Express Request augmentation (correlationId, admin)
+  health/                      /health (liveness), /ready (Redis/Kafka/core-api/Postgres indicators)
   metrics/                     /metrics (Prometheus text exposition, own Registry)
-  modules/                     Business modules — empty until Phase 2+
-  integrations/                Kafka/Laravel/Redis clients — empty until Phase 4/6
-  database/                    Migrations/entities/repositories — empty until Phase 3
+  integrations/
+    postgres/                   Shared pg.Pool, connected as the admin_api (auth-only) role
+  modules/
+    auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
+    audit/                       AuditService — structured-log-only foundation, durable storage is Phase 3
+  database/                    Migrations/entities/repositories — empty until Phase 3 (admin_read schema)
 ```
-
-## Why no Postgres health check yet
-
-`/ready` checks Redis, Kafka, and core-api, but not Postgres — admin-api
-has no database role or schema of its own until Phase 3 creates
-`admin_api`/`admin_read`. See the comment in
-[src/health/health.module.ts](src/health/health.module.ts).
 
 ## Running locally
 
 Requires the Phase 1 infrastructure up (`docker compose up -d` from the
-repo root) and core-api running (for the `/ready` core-api indicator and,
-from Phase 6 onward, command forwarding).
+repo root), core-api running (for the `/ready` core-api indicator, login,
+and `admin:create`), and at least one admin account:
 
 ```bash
-cd apps/admin-api
-cp .env.example .env
+cd apps/core-api
+php artisan migrate   # creates the admin_api Postgres role, if not already applied
+php artisan admin:create you@example.com "Your Name" super_admin --password=ChangeMe123
+
+cd ../admin-api
+cp .env.example .env   # ADMIN_API_POSTGRES_DSN's password must match ADMIN_API_DB_PASSWORD in apps/core-api/.env
 npm install
 npm run start:dev
 ```
@@ -70,6 +72,16 @@ curl -i http://localhost:3001/health -H "X-Correlation-Id: 9b1deb4d-3b7d-4bad-9b
 
 # Error envelope (404 on an undefined route)
 curl -i http://localhost:3001/nope
+
+# Auth chain, end to end — log in against core-api, then call admin-api
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"ChangeMe123"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['meta']['token'])")
+curl http://localhost:3001/api/v1/admin/session -H "Authorization: Bearer $TOKEN"
+
+# Without a token: 401
+curl -i http://localhost:3001/api/v1/admin/session
 ```
 
 Swagger/OpenAPI UI (non-production only, same convention as core-api's
@@ -77,7 +89,15 @@ Swagger/OpenAPI UI (non-production only, same convention as core-api's
 
 ## Tests
 
-None yet — Phase 1 is framework wiring with no business logic to unit
-test. Tests start with Phase 2 (permission guards) per
-[docs/admin-api/overview.md](../../docs/admin-api/overview.md)'s phase
-plan.
+```bash
+npx jest
+```
+
+`src/modules/auth/guards/permissions.guard.spec.ts` — the permission-
+matching logic (`'*'` wildcard, AND-ed requirements, missing-permission
+rejection). `AuthGuard`/`TokenVerificationService`'s Postgres-dependent
+behavior is verified live instead (see
+[docs/admin-api/authentication.md](../../docs/admin-api/authentication.md)'s
+"What's proven live vs. unit-tested" section) — no mocked-Postgres
+integration test exists, since a real round-trip against the actual
+`admin_api` role is what actually matters here.

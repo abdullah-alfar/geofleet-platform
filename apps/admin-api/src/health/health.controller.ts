@@ -14,6 +14,7 @@ import {
 import type { Response } from 'express';
 import { CoreApiHealthIndicator } from './indicators/core-api.indicator';
 import { KafkaHealthIndicator } from './indicators/kafka.indicator';
+import { PostgresHealthIndicator } from './indicators/postgres.indicator';
 import { RedisHealthIndicator } from './indicators/redis.indicator';
 
 @ApiTags('health')
@@ -24,6 +25,7 @@ export class HealthController {
     private readonly redis: RedisHealthIndicator,
     private readonly kafka: KafkaHealthIndicator,
     private readonly coreApi: CoreApiHealthIndicator,
+    private readonly postgres: PostgresHealthIndicator,
   ) {}
 
   /**
@@ -50,8 +52,8 @@ export class HealthController {
   @Get('ready')
   @ApiOperation({
     summary:
-      'Readiness — checks every dependency this instance actually needs (Redis, Kafka, core-api). ' +
-      'No Postgres indicator yet: admin-api has no database role/schema of its own until Phase 3.',
+      'Readiness — checks every dependency this instance actually needs ' +
+      '(Redis, Kafka, core-api, Postgres via the admin_api auth-only role).',
   })
   @HealthCheck()
   async ready(
@@ -62,6 +64,7 @@ export class HealthController {
         (): Promise<HealthIndicatorResult> => this.redis.check('redis'),
         (): Promise<HealthIndicatorResult> => this.kafka.check('kafka'),
         (): Promise<HealthIndicatorResult> => this.coreApi.check('core_api'),
+        (): Promise<HealthIndicatorResult> => this.postgres.check('postgres'),
       ]);
     } catch (error) {
       if (error instanceof ServiceUnavailableException) {

@@ -44,15 +44,22 @@ means admin-api's own Phase 1, not the platform's.
    correlation-id propagation, response/error envelope, health/readiness,
    Prometheus metrics, Swagger, Docker. No business modules, no
    authentication, no database, no Kafka consumers yet.
-2. **Authentication and permissions** — not started, no longer blocked.
-   core-api's side (admin identity, role -> ability mapping) is done —
-   see [ADR 0009](../decisions/0009-admin-identity.md). Remaining for this
-   phase: admin-api's own `PermissionsGuard` (verify the Sanctum token
-   against Postgres, same pattern realtime-gateway already uses),
-   `@RequirePermissions()` decorator, audit foundation.
-3. **Admin read database** — not started. `admin_api` Postgres role,
-   `admin_read` schema, migrations, the inbox table, and the projection
-   tables themselves (empty until Phase 4 populates them).
+2. **Authentication and permissions** — done. `admin_api` Postgres role
+   (auth-only — personal_access_tokens/users/admins, no domain tables),
+   `TokenVerificationService` (Sanctum-token verification against
+   Postgres, no call back into core-api), `AuthGuard` + `@CurrentAdmin()`,
+   `PermissionsGuard` + `@RequirePermissions()`, a log-only audit
+   foundation (`AuditService` — durable storage is Phase 3), and
+   `GET /api/v1/admin/session` proving the whole chain live. See
+   [authentication.md](authentication.md) and
+   [permissions.md](permissions.md).
+3. **Admin read database** — not started. The `admin_api` role already
+   exists (Phase 2, auth-only) but has no schema beyond the three
+   authentication tables it can read — this phase adds the `admin_read`
+   schema, migrations, the inbox table, and the projection tables
+   themselves (empty until Phase 4 populates them). Likely needs its own,
+   broader Postgres role/grants (`CREATE`/`INSERT`/`UPDATE` on
+   `admin_read.*`) distinct from the read-only auth role.
 4. **Kafka projection consumers** — not started. Idempotent handlers for
    the live topics in [kafka-projections.md](kafka-projections.md)
    (written once this phase starts).

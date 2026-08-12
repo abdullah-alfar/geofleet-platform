@@ -205,11 +205,13 @@ correlation mappings that route events which don't carry a customer id
 
 ## Quick start (admin-api)
 
-Requires Node 22. Run after the infrastructure above is up (core-api
-optional but needed for the `/ready` core-api indicator).
+Requires Node 22 and core-api running (login + `admin:create` + the
+`/ready` core-api indicator).
 
 ```bash
-cd apps/admin-api
+cd apps/core-api && php artisan admin:create you@example.com "You" super_admin --password=ChangeMe123
+
+cd ../admin-api
 cp .env.example .env
 npm install
 npm run start:dev
@@ -221,9 +223,12 @@ forwards operational commands to core-api's internal API rather than
 mutating Laravel-owned tables — see
 [docs/admin-api/overview.md](docs/admin-api/overview.md) and
 [docs/admin-api/architecture.md](docs/admin-api/architecture.md) for the
-full design and its own phase plan. **Status: Phase 1 of 8 —
-foundation only** (config, logging, correlation ids, health/readiness,
-metrics, Swagger; no auth, no database, no Kafka consumers yet).
+full design and its own phase plan. **Status: Phase 2 of 8 —
+authentication and permissions** (admin identity verified directly
+against Postgres, Sanctum-token-abilities permission checks — see
+[docs/admin-api/authentication.md](docs/admin-api/authentication.md) and
+[docs/admin-api/permissions.md](docs/admin-api/permissions.md); no
+database of its own, no Kafka consumers, no business endpoints yet).
 
 ## Load testing
 

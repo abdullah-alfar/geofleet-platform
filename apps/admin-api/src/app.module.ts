@@ -10,6 +10,9 @@ import { validationSchema } from './config/validation.schema';
 import { CommonModule } from './common/common.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { PostgresModule } from './integrations/postgres/postgres.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -56,8 +59,11 @@ import { MetricsModule } from './metrics/metrics.module';
       }),
     }),
     CommonModule,
+    PostgresModule,
     HealthModule,
     MetricsModule,
+    AuditModule,
+    AuthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
