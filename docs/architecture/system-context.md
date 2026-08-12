@@ -51,11 +51,12 @@ rather than a schema migration.
 ## What this document intentionally excludes
 
 - Internal service boundaries and their interactions (container diagram,
-  added when those services exist).
+  added when those services exist) — still deferred; not built in any
+  phase so far, see the note in `README.md`'s Status section.
 - Data flow through Kafka topics (data-flow.md, added alongside the outbox
-  publisher in Phase 2).
-- Capacity/scalability numbers (scalability.md, added when there's a
-  concrete implementation to size against).
+  publisher in Phase 2) — still deferred, same reason.
+- Capacity/scalability numbers — **done**, see
+  [scalability.md](scalability.md) (Phase 8).
 
 These are deferred, not forgotten — see the phased plan in the repo root
 `README.md`.

@@ -83,30 +83,18 @@ func run() error {
 	}
 	fmt.Println("all required services reachable, proceeding.")
 
-	fmt.Printf("\n--- seeding %d drivers ---\n", cfg.drivers)
-	drivers, err := seedDrivers(cfg, cfg.drivers)
+	fmt.Printf("\n--- seeding %d drivers, %d customers (via `php artisan loadtest:seed`) ---\n", cfg.drivers, cfg.customers)
+	drivers, customers, err := seedFleet(cfg, cfg.drivers, cfg.customers)
 	if err != nil {
-		return fmt.Errorf("seed drivers: %w", err)
+		return fmt.Errorf("seed fleet: %w", err)
 	}
-	fmt.Printf("seeded %d/%d drivers\n", len(drivers), cfg.drivers)
+	fmt.Printf("seeded %d drivers (already active), %d customers\n", len(drivers), len(customers))
 	if len(drivers) == 0 {
-		return fmt.Errorf("no drivers seeded successfully, aborting")
+		return fmt.Errorf("no drivers seeded, aborting")
 	}
-
-	if err := activateDrivers(cfg, drivers); err != nil {
-		return fmt.Errorf("activate drivers: %w", err)
-	}
-	fmt.Println("activated all seeded drivers (bypassing the not-yet-built admin approval flow, same as this repo's own manual verification steps)")
 
 	fmt.Println("submitting each driver's initial GPS fix...")
 	submitInitialLocations(cfg, drivers)
-
-	fmt.Printf("\n--- seeding %d customers ---\n", cfg.customers)
-	customers, err := seedCustomers(cfg, cfg.customers)
-	if err != nil {
-		return fmt.Errorf("seed customers: %w", err)
-	}
-	fmt.Printf("seeded %d/%d customers\n", len(customers), cfg.customers)
 
 	// Let the geo-index catch up (Kafka round trip for the initial
 	// location fixes) before either load phase starts scoring against it.

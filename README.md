@@ -11,15 +11,21 @@ read it before contributing.
 
 ## Status
 
-**Phase 7 of 8: Reliability.** Local infrastructure (Phase 1) + Laravel
-core-api (Phase 2) + Go location-service (Phase 3) + core-api's location
-consumer (Phase 4) + Go dispatch-service (Phase 5) + Go realtime-gateway
-(Phase 6) + retry topics, dead-letter queues, and inbox retention for the
-two consumers where a dropped message means real, unrecoverable data loss
-(core-api's trip-route sampler, dispatch-service's ride matcher) — see the
-phase map in `AGENTS.md`,
-[docs/events/retry-and-dlq.md](docs/events/retry-and-dlq.md), and
-[ADR 0007](docs/decisions/0007-retry-dlq-strategy.md).
+**Phase 8 of 8: Scalability validation — all planned phases complete.**
+Local infrastructure (Phase 1) + Laravel core-api (Phase 2) + Go
+location-service (Phase 3) + core-api's location consumer (Phase 4) + Go
+dispatch-service (Phase 5) + Go realtime-gateway (Phase 6) + retry
+topics/DLQ/inbox retention (Phase 7) + a lightweight load-testing tool and
+a capacity analysis grounded in real measurements against this stack (Phase
+8) — see the phase map in `AGENTS.md`,
+[docs/architecture/scalability.md](docs/architecture/scalability.md), and
+[ADR 0008](docs/decisions/0008-load-testing-approach.md).
+
+Two documents `docs/architecture/system-context.md` itself flags as
+deferred remain genuinely not built: a container diagram and a Kafka
+data-flow doc (neither was any single phase's explicit deliverable — see
+that file's own "What this document intentionally excludes" section).
+Worth doing as a follow-up, not part of this phased plan.
 
 ## Repository layout
 
@@ -195,6 +201,22 @@ the WebSocket auth reuse, the Redis Pub/Sub fan-out design, and the two
 correlation mappings that route events which don't carry a customer id
 (and why — see also
 [docs/decisions/0006](docs/decisions/0006-realtime-gateway-fanout.md)).
+
+## Load testing
+
+Requires Go 1.26.3, core-api, location-service, and dispatch-service
+running (realtime-gateway optional).
+
+```bash
+cd scripts/loadtest
+go run . -drivers=50 -customers=20 -gps-duration=30s
+```
+
+Generates real traffic against the running stack and reports
+latency/throughput from each service's own Prometheus metrics — see
+[scripts/loadtest/README.md](scripts/loadtest/README.md) for the full flag
+list and [docs/architecture/scalability.md](docs/architecture/scalability.md)
+for the resulting capacity analysis.
 
 ## Documentation
 

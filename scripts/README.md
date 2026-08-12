@@ -15,3 +15,16 @@ for the retry/DLQ design. Requires `jq` on the host.
 ```bash
 scripts/kafka-replay-dlq.sh ride.requested.v1.dlq
 ```
+
+## loadtest/
+
+Lightweight Go load generator + capacity report for GPS ingestion and
+ride-matching (Phase 8). See
+[scripts/loadtest/README.md](loadtest/README.md),
+[docs/architecture/scalability.md](../docs/architecture/scalability.md)
+for the resulting analysis, and
+[ADR 0008](../docs/decisions/0008-load-testing-approach.md) for the design.
+
+```bash
+cd scripts/loadtest && go run . -drivers=50 -customers=20
+```

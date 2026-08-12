@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"time"
 )
@@ -65,30 +66,14 @@ func postJSON(url, bearer string, body any, out any) error {
 	return nil
 }
 
-func patchJSON(url, bearer string, body any) error {
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+bearer)
-
-	resp, err := sharedClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request: %w", err)
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
-
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	return nil
+// jitter scatters a point within roughly +/-1km of (lat, lng) — used for
+// ride-request pickup/dropoff points. Matches LoadTestSeed.php's own
+// jitterPoint(), which does the equivalent for seeded driver positions.
+func jitter(lat, lng float64) (float64, float64) {
+	const degreesPerKm = 0.009 // ~1km at this latitude
+	dLat := (rand.Float64()*2 - 1) * degreesPerKm
+	dLng := (rand.Float64()*2 - 1) * degreesPerKm
+	return lat + dLat, lng + dLng
 }
 
 func truncate(s string, n int) string {
@@ -98,38 +83,9 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-// --- core-api response shapes (only the fields this tool needs) ---
-
-type registerResponse struct {
-	Data struct {
-		ID     string `json:"id"`
-		Driver *struct {
-			ID string `json:"id"`
-		} `json:"driver"`
-		Customer *struct {
-			ID string `json:"id"`
-		} `json:"customer"`
-	} `json:"data"`
-	Meta struct {
-		Token string `json:"token"`
-	} `json:"meta"`
-}
-
-type vehicleResponse struct {
-	Data struct {
-		ID string `json:"id"`
-	} `json:"data"`
-}
-
-type deviceResponse struct {
-	Data struct {
-		ID string `json:"id"`
-	} `json:"data"`
-	Meta struct {
-		DeviceToken string `json:"device_token"`
-	} `json:"meta"`
-}
-
+// rideRequestResponse is the only core-api HTTP response shape this tool
+// still decodes — driver/customer provisioning goes through
+// `php artisan loadtest:seed` instead (see seed.go), not the HTTP API.
 type rideRequestResponse struct {
 	Data struct {
 		ID string `json:"id"`

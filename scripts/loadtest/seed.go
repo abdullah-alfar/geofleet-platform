@@ -1,11 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os/exec"
-	"strings"
-	"sync"
+	"strconv"
 )
 
 // vehicleType is fixed across every seeded driver and every ride request
@@ -16,206 +15,78 @@ import (
 const vehicleType = "sedan"
 
 type driver struct {
-	userUUID    string
 	driverUUID  string
 	deviceUUID  string
-	userToken   string
 	deviceToken string
 	lat, lng    float64
 }
 
 type customer struct {
-	userUUID string
-	token    string
+	customerUUID string
+	token        string
 }
 
-// seedDrivers registers n drivers, each with one active vehicle and one
-// device, scattered within roughly a 2km box around (baseLat, baseLng) —
-// tight enough that geohash precision 6's center-cell-plus-8-neighbors
-// search (see docs/decisions/0005) actually finds them as candidates.
-func seedDrivers(cfg config, n int) ([]driver, error) {
-	drivers := make([]driver, n)
-	errs := make([]error, n)
+type seedOutput struct {
+	Drivers []struct {
+		DriverUUID  string  `json:"driver_uuid"`
+		DeviceUUID  string  `json:"device_uuid"`
+		DeviceToken string  `json:"device_token"`
+		Lat         float64 `json:"lat"`
+		Lng         float64 `json:"lng"`
+	} `json:"drivers"`
+	Customers []struct {
+		CustomerUUID string `json:"customer_uuid"`
+		Token        string `json:"token"`
+	} `json:"customers"`
+}
 
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, cfg.seedConcurrency)
+// seedFleet provisions n drivers and m customers via core-api's
+// `loadtest:seed` artisan command — not the public HTTP registration
+// endpoint, which is deliberately rate-limited to 10/minute per IP
+// (brute-force/enumeration protection, see AppServiceProvider's `auth`
+// limiter) and therefore the wrong tool for bulk test-data provisioning.
+// See docs/decisions/0008-load-testing-approach.md. Drivers come back
+// already active (bypassing the not-yet-built admin approval step) and
+// scattered within ~1km of (baseLat, baseLng) — see LoadTestSeed.php's
+// jitterPoint, which matches this tool's own jitter().
+func seedFleet(cfg config, driverCount, customerCount int) ([]driver, []customer, error) {
+	cmd := exec.Command("php", "artisan", "loadtest:seed",
+		"--drivers="+strconv.Itoa(driverCount),
+		"--customers="+strconv.Itoa(customerCount),
+		"--base-lat="+strconv.FormatFloat(cfg.baseLat, 'f', -1, 64),
+		"--base-lng="+strconv.FormatFloat(cfg.baseLng, 'f', -1, 64),
+		"--run-id="+strconv.FormatInt(cfg.runID, 10),
+	)
+	cmd.Dir = cfg.coreAPIDir
 
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			d, err := seedOneDriver(cfg, i)
-			if err != nil {
-				errs[i] = err
-				return
-			}
-			drivers[i] = d
-		}(i)
-	}
-	wg.Wait()
-
-	var out []driver
-	failed := 0
-	for i, d := range drivers {
-		if errs[i] != nil {
-			failed++
-			continue
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, nil, fmt.Errorf("loadtest:seed failed: %w (stderr: %s)", err, string(exitErr.Stderr))
 		}
-		out = append(out, d)
-	}
-	if failed > 0 {
-		fmt.Printf("  ! %d/%d driver seeds failed (first error: %v)\n", failed, n, firstErr(errs))
-	}
-	return out, nil
-}
-
-func seedOneDriver(cfg config, i int) (driver, error) {
-	email := fmt.Sprintf("loadtest-driver-%d-%d@test.local", cfg.runID, i)
-	var reg registerResponse
-	err := postJSON(cfg.coreAPI+"/api/v1/auth/register", "", map[string]any{
-		"name":                  fmt.Sprintf("Load Test Driver %d", i),
-		"email":                 email,
-		"password":              "password123",
-		"password_confirmation": "password123",
-		"role":                  "driver",
-		"license_number":        fmt.Sprintf("LOADTEST-%d-%d", cfg.runID, i),
-		"license_expires_at":    "2030-01-01",
-	}, &reg)
-	if err != nil {
-		return driver{}, fmt.Errorf("register: %w", err)
-	}
-	if reg.Data.Driver == nil {
-		return driver{}, fmt.Errorf("register: no driver profile in response")
+		return nil, nil, fmt.Errorf("run loadtest:seed: %w", err)
 	}
 
-	var veh vehicleResponse
-	err = postJSON(cfg.coreAPI+"/api/v1/drivers/vehicles", reg.Meta.Token, map[string]any{
-		"make":         "Toyota",
-		"model":        "Camry",
-		"year":         2022,
-		"color":        "white",
-		"plate_number": fmt.Sprintf("LOAD-%d-%d", cfg.runID, i),
-		"vehicle_type": vehicleType,
-	}, &veh)
-	if err != nil {
-		return driver{}, fmt.Errorf("create vehicle: %w", err)
+	var parsed seedOutput
+	if err := json.Unmarshal(output, &parsed); err != nil {
+		return nil, nil, fmt.Errorf("decode loadtest:seed output: %w (output: %s)", err, truncate(string(output), 500))
 	}
 
-	var dev deviceResponse
-	err = postJSON(cfg.coreAPI+"/api/v1/driver/devices", reg.Meta.Token, map[string]any{
-		"device_identifier": fmt.Sprintf("loadtest-device-%d-%d", cfg.runID, i),
-		"platform":          "android",
-	}, &dev)
-	if err != nil {
-		return driver{}, fmt.Errorf("create device: %w", err)
-	}
-
-	if err := patchJSON(cfg.coreAPI+"/api/v1/driver/availability", reg.Meta.Token, map[string]any{"is_available": true}); err != nil {
-		return driver{}, fmt.Errorf("set availability: %w", err)
-	}
-
-	lat, lng := jitter(cfg.baseLat, cfg.baseLng)
-	return driver{
-		userUUID:    reg.Data.ID,
-		driverUUID:  reg.Data.Driver.ID,
-		deviceUUID:  dev.Data.ID,
-		userToken:   reg.Meta.Token,
-		deviceToken: dev.Meta.DeviceToken,
-		lat:         lat,
-		lng:         lng,
-	}, nil
-}
-
-func seedCustomers(cfg config, n int) ([]customer, error) {
-	customers := make([]customer, n)
-	errs := make([]error, n)
-
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, cfg.seedConcurrency)
-
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			email := fmt.Sprintf("loadtest-customer-%d-%d@test.local", cfg.runID, i)
-			var reg registerResponse
-			err := postJSON(cfg.coreAPI+"/api/v1/auth/register", "", map[string]any{
-				"name":                  fmt.Sprintf("Load Test Customer %d", i),
-				"email":                 email,
-				"password":              "password123",
-				"password_confirmation": "password123",
-				"role":                  "customer",
-			}, &reg)
-			if err != nil {
-				errs[i] = fmt.Errorf("register: %w", err)
-				return
-			}
-			customers[i] = customer{userUUID: reg.Data.ID, token: reg.Meta.Token}
-		}(i)
-	}
-	wg.Wait()
-
-	var out []customer
-	failed := 0
-	for i, c := range customers {
-		if errs[i] != nil {
-			failed++
-			continue
-		}
-		out = append(out, c)
-	}
-	if failed > 0 {
-		fmt.Printf("  ! %d/%d customer seeds failed (first error: %v)\n", failed, n, firstErr(errs))
-	}
-	return out, nil
-}
-
-// activateDrivers bypasses the (not-yet-built, see contracts/postman/README.md's
-// documented gap) admin-approval flow the same way this repo's own manual
-// verification steps already do: a direct UPDATE, shelled out through
-// `docker compose exec postgres psql` so this tool needs no Postgres
-// driver dependency of its own — same pattern scripts/kafka-replay-dlq.sh
-// already uses for the Kafka CLI.
-func activateDrivers(cfg config, drivers []driver) error {
-	if len(drivers) == 0 {
-		return nil
-	}
-
-	uuids := make([]string, len(drivers))
-	for i, d := range drivers {
-		uuids[i] = "'" + d.driverUUID + "'"
-	}
-	sql := fmt.Sprintf("UPDATE drivers SET status = 'active' WHERE uuid IN (%s);", strings.Join(uuids, ","))
-
-	cmd := exec.Command("docker", "compose", "exec", "-T", "postgres", "psql", "-U", "core_api", "-d", "core_api", "-c", sql)
-	cmd.Dir = cfg.repoRoot
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("activate drivers: %w (output: %s)", err, string(output))
-	}
-	return nil
-}
-
-// jitter scatters a point within roughly +/-1km of the base — small
-// enough that geohash precision 6's 9-cell search (center + 8 neighbors,
-// ~3.6km x 1.8km total) reliably covers it.
-func jitter(baseLat, baseLng float64) (float64, float64) {
-	const degreesPerKm = 0.009 // ~1km at this latitude
-	dLat := (rand.Float64()*2 - 1) * degreesPerKm
-	dLng := (rand.Float64()*2 - 1) * degreesPerKm
-	return baseLat + dLat, baseLng + dLng
-}
-
-func firstErr(errs []error) error {
-	for _, e := range errs {
-		if e != nil {
-			return e
+	drivers := make([]driver, len(parsed.Drivers))
+	for i, d := range parsed.Drivers {
+		drivers[i] = driver{
+			driverUUID:  d.DriverUUID,
+			deviceUUID:  d.DeviceUUID,
+			deviceToken: d.DeviceToken,
+			lat:         d.Lat,
+			lng:         d.Lng,
 		}
 	}
-	return nil
+
+	customers := make([]customer, len(parsed.Customers))
+	for i, c := range parsed.Customers {
+		customers[i] = customer{customerUUID: c.CustomerUUID, token: c.Token}
+	}
+
+	return drivers, customers, nil
 }
