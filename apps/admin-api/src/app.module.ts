@@ -11,6 +11,7 @@ import { CommonModule } from './common/common.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { PostgresModule } from './integrations/postgres/postgres.module';
+import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
 
@@ -60,6 +61,7 @@ import { AuditModule } from './modules/audit/audit.module';
     }),
     CommonModule,
     PostgresModule,
+    DatabaseModule,
     HealthModule,
     MetricsModule,
     AuditModule,

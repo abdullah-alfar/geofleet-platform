@@ -27,6 +27,15 @@ class AdminApiPgPool implements OnModuleDestroy {
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 2_000,
+      // admin_api owns the admin_read schema as of Phase 3 (see
+      // docs/decisions/0009-admin-identity.md and
+      // docs/admin-api/read-models.md) — putting it first in search_path
+      // means Kysely/raw queries against projection tables don't need an
+      // `admin_read.` prefix, while unqualified references to the three
+      // Phase 2 auth tables (personal_access_tokens/users/admins) still
+      // resolve via the `public` fallback. One role, one pool, two
+      // schemas — not two separate connections to the same database.
+      options: '-c search_path=admin_read,public',
     });
 
     // node-postgres emits 'error' on the pool when an *idle* client's
@@ -50,9 +59,11 @@ class AdminApiPgPool implements OnModuleDestroy {
 
 /**
  * A single shared pool, connected as the `admin_api` Postgres role
- * (docs/decisions/0009-admin-identity.md) — authentication only
- * (personal_access_tokens/users/admins). Not the admin_read schema for
- * Kafka projections; that's a separate role/connection, Phase 3.
+ * (docs/decisions/0009-admin-identity.md): authentication (Phase 2 —
+ * personal_access_tokens/users/admins in `public`) and, as of Phase 3,
+ * the `admin_read` schema this role owns for Kafka-projection read
+ * models (see database/database.module.ts for the Kysely wrapper used
+ * for the latter).
  */
 @Global()
 @Module({

@@ -14,10 +14,10 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 2 of 8 — authentication and permissions.** Admin identity
-verified directly against Postgres (no call back into core-api), Sanctum-
-token-abilities-based permission checks. No database of its own, no Kafka
-consumers, no business query/command endpoints yet — see
+**Status: Phase 3 of 8 — admin read database.** `admin_read` schema
+(owned by the same `admin_api` role Phase 2 created), Kysely migrations,
+the inbox table, and five projection tables + regional metrics — all
+empty until Phase 4's Kafka consumers populate them. See
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
 full phase plan.
 
@@ -26,7 +26,7 @@ full phase plan.
 ```
 src/
   main.ts                    Bootstrap: helmet, CORS, body limits, global pipe, Swagger, global prefix, listen
-  app.module.ts               Root wiring: config, logger, throttler, postgres, health, metrics, audit, auth
+  app.module.ts               Root wiring: config, logger, throttler, postgres, database, health, metrics, audit, auth
   config/                     Joi-validated environment config (fails fast on boot)
   common/
     middleware/                Correlation-ID middleware
@@ -36,11 +36,15 @@ src/
   health/                      /health (liveness), /ready (Redis/Kafka/core-api/Postgres indicators)
   metrics/                     /metrics (Prometheus text exposition, own Registry)
   integrations/
-    postgres/                   Shared pg.Pool, connected as the admin_api (auth-only) role
+    postgres/                   Shared pg.Pool, connected as the admin_api role (search_path: admin_read, public)
+  database/
+    schema.ts                   Typed Database interface for every admin_read table
+    database.module.ts          Kysely<Database> DI provider, wraps the shared pg.Pool
+    migrate.ts                   Standalone migration CLI (npm run migrate -- up|down|status)
+    migrations/                  admin_consumer_inbox, driver/ride/ride-offer/trip/payment projections, region_metrics
   modules/
     auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
-    audit/                       AuditService — structured-log-only foundation, durable storage is Phase 3
-  database/                    Migrations/entities/repositories — empty until Phase 3 (admin_read schema)
+    audit/                       AuditService — structured-log-only foundation, durable storage not yet needed
 ```
 
 ## Running locally
@@ -51,12 +55,13 @@ and `admin:create`), and at least one admin account:
 
 ```bash
 cd apps/core-api
-php artisan migrate   # creates the admin_api Postgres role, if not already applied
+php artisan migrate   # creates the admin_api role + admin_read schema, if not already applied
 php artisan admin:create you@example.com "Your Name" super_admin --password=ChangeMe123
 
 cd ../admin-api
 cp .env.example .env   # ADMIN_API_POSTGRES_DSN's password must match ADMIN_API_DB_PASSWORD in apps/core-api/.env
 npm install
+npm run migrate -- up   # creates the admin_read tables (idempotent — safe to re-run)
 npm run start:dev
 ```
 
@@ -86,6 +91,17 @@ curl -i http://localhost:3001/api/v1/admin/session
 
 Swagger/OpenAPI UI (non-production only, same convention as core-api's
 `GET /docs`): [http://localhost:3001/docs](http://localhost:3001/docs).
+
+## Database migrations
+
+```bash
+npm run migrate -- status   # list applied/pending migrations
+npm run migrate -- up       # migrate to latest
+npm run migrate -- down     # roll back one migration
+```
+
+See [docs/admin-api/read-models.md](../../docs/admin-api/read-models.md)
+for the schema itself and why each index exists.
 
 ## Tests
 

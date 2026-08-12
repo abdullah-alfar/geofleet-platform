@@ -49,17 +49,20 @@ means admin-api's own Phase 1, not the platform's.
    `TokenVerificationService` (Sanctum-token verification against
    Postgres, no call back into core-api), `AuthGuard` + `@CurrentAdmin()`,
    `PermissionsGuard` + `@RequirePermissions()`, a log-only audit
-   foundation (`AuditService` — durable storage is Phase 3), and
-   `GET /api/v1/admin/session` proving the whole chain live. See
-   [authentication.md](authentication.md) and
+   foundation (`AuditService` — durable storage deferred, see Phase 3
+   note below), and `GET /api/v1/admin/session` proving the whole chain
+   live. See [authentication.md](authentication.md) and
    [permissions.md](permissions.md).
-3. **Admin read database** — not started. The `admin_api` role already
-   exists (Phase 2, auth-only) but has no schema beyond the three
-   authentication tables it can read — this phase adds the `admin_read`
-   schema, migrations, the inbox table, and the projection tables
-   themselves (empty until Phase 4 populates them). Likely needs its own,
-   broader Postgres role/grants (`CREATE`/`INSERT`/`UPDATE` on
-   `admin_read.*`) distinct from the read-only auth role.
+3. **Admin read database** — done. `admin_api` (same role as Phase 2, not
+   a second one) now owns the `admin_read` schema outright. Kysely
+   migrations, the inbox table, and five projection tables
+   (driver/ride/ride-offer/trip/payment) + regional metrics — all empty
+   until Phase 4 populates them, two of them (trip/payment) staying empty
+   even after that until core-api's own producer-side gaps close (see
+   [read-models.md](read-models.md)). No `admin_action_logs` table —
+   that wasn't in this phase's actual scope (only the 5 tables + inbox
+   the original plan named); `AuditService` stays log-only until a real
+   need for durable audit history shows up.
 4. **Kafka projection consumers** — not started. Idempotent handlers for
    the live topics in [kafka-projections.md](kafka-projections.md)
    (written once this phase starts).
@@ -89,6 +92,10 @@ tokens, the actual `PermissionsGuard`) is unblocked and can now proceed.
 
 - [architecture.md](architecture.md) — container-level view, query/command
   separation, tech choices and why.
+- [authentication.md](authentication.md) / [permissions.md](permissions.md) —
+  Phase 2's auth chain and permission model.
+- [read-models.md](read-models.md) — Phase 3's `admin_read` schema, tables,
+  and indexes.
 - [../architecture/container-diagram.md](../architecture/container-diagram.md) —
   the platform-wide container diagram; admin-api isn't on it yet since it
   wasn't part of the 8-phase plan that diagram describes — revisit once

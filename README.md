@@ -214,6 +214,7 @@ cd apps/core-api && php artisan admin:create you@example.com "You" super_admin -
 cd ../admin-api
 cp .env.example .env
 npm install
+npm run migrate -- up
 npm run start:dev
 ```
 
@@ -223,12 +224,13 @@ forwards operational commands to core-api's internal API rather than
 mutating Laravel-owned tables — see
 [docs/admin-api/overview.md](docs/admin-api/overview.md) and
 [docs/admin-api/architecture.md](docs/admin-api/architecture.md) for the
-full design and its own phase plan. **Status: Phase 2 of 8 —
-authentication and permissions** (admin identity verified directly
-against Postgres, Sanctum-token-abilities permission checks — see
-[docs/admin-api/authentication.md](docs/admin-api/authentication.md) and
-[docs/admin-api/permissions.md](docs/admin-api/permissions.md); no
-database of its own, no Kafka consumers, no business endpoints yet).
+full design and its own phase plan. **Status: Phase 3 of 8 —
+admin read database** (a `admin_read` Postgres schema owned outright by
+the `admin_api` role, Kysely migrations, five projection tables + an
+inbox + regional metrics — all empty until Phase 4's Kafka consumers
+populate them — see
+[docs/admin-api/read-models.md](docs/admin-api/read-models.md); no Kafka
+consumers or business endpoints yet).
 
 ## Load testing
 
