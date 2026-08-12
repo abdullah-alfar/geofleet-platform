@@ -36,6 +36,7 @@ apps/
   dispatch-service/    Go 1.26.3 — driver matching (Phase 5)
   realtime-gateway/    Go 1.26.3 — WebSockets, fan-out (Phase 6)
   admin-api/           NestJS 11 — Admin BFF: read models + command forwarding (additive, see docs/admin-api/)
+  admin-web/           Nuxt 4 — Admin dashboard UI, calls admin-api (additive, see apps/admin-web/README.md)
 contracts/
   events/               Event schemas shared across services
   openapi/              REST API specification
@@ -240,6 +241,34 @@ with no prior visibility. See
 [docs/admin-api/realtime-operations.md](docs/admin-api/realtime-operations.md)
 for the freshness bug (an orphaned Redis key that would have shown a
 phantom driver at 0,0) and unbounded-query bug it caught live.
+
+## Quick start (admin-web)
+
+Requires Node 22 and admin-api running (see above) — admin-web has no
+direct dependency on core-api's or admin-api's *databases*, only their
+HTTP APIs.
+
+```bash
+cd apps/admin-web
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Open http://localhost:3000. Log in with an admin account created via
+`php artisan admin:create` (see above).
+
+**Additive scope** — the browser-based dashboard UI admin-api's own
+architecture diagram always drew as out-of-scope, now built: Nuxt 4,
+SPA mode (no SSR — an internal authenticated tool, no SEO need). Covers
+every admin-api endpoint built so far — dashboard, drivers/rides/trips/
+payments (filtered, cursor-paginated lists + detail views), the
+suspend/cancel/refund commands, and the live driver map/counters/incident
+feed — gated client-side by the same abilities admin-api enforces
+server-side. See [apps/admin-web/README.md](apps/admin-web/README.md) for
+the full structure and the auth flow (admins log in through core-api
+directly, same as customers/drivers, then everything else goes through
+admin-api).
 
 ## Load testing
 

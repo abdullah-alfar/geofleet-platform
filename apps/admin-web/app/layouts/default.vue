@@ -1,17 +1,19 @@
 <script setup lang="ts">
-/**
- * Only lists nav links to pages that actually exist — Phase 1 built just
- * the dashboard. Drivers/rides/trips/payments/live-map links are added
- * here as each one's own phase actually builds the page, not ahead of
- * it (a nav link to a 404 is worse than no link).
- */
+/** Only lists nav links to pages that actually exist. */
 interface NavItem {
   to: string;
   label: string;
   ability: string;
 }
 
-const navItems: NavItem[] = [{ to: '/dashboard', label: 'Dashboard', ability: 'dashboard.view' }];
+const navItems: NavItem[] = [
+  { to: '/dashboard', label: 'Dashboard', ability: 'dashboard.view' },
+  { to: '/drivers', label: 'Drivers', ability: 'drivers.view' },
+  { to: '/rides', label: 'Rides', ability: 'rides.view' },
+  { to: '/trips', label: 'Trips', ability: 'trips.view' },
+  { to: '/payments', label: 'Payments', ability: 'payments.view' },
+  { to: '/realtime', label: 'Live map', ability: 'drivers.view' },
+];
 
 const auth = useAuthStore();
 
