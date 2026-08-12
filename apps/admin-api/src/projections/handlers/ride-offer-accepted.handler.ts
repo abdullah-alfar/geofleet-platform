@@ -1,0 +1,43 @@
+import { Injectable } from '@nestjs/common';
+import type { Transaction } from 'kysely';
+import { Database } from '../../database/schema';
+import { EventEnvelope } from '../../integrations/kafka/envelope';
+import { ProjectionHandler } from './projection-handler.interface';
+
+interface RideOfferAcceptedData {
+  ride_request_id: string;
+  offer_id: string;
+  driver_id: string;
+}
+
+@Injectable()
+export class RideOfferAcceptedHandler implements ProjectionHandler<RideOfferAcceptedData> {
+  readonly eventType = 'ride.offer.accepted';
+  readonly consumerName = 'admin-api.ride-offer-accepted-projection';
+
+  async handle(
+    envelope: EventEnvelope<RideOfferAcceptedData>,
+    trx: Transaction<Database>,
+  ): Promise<void> {
+    const occurredAt = new Date(envelope.occurred_at);
+
+    await trx
+      .insertInto('admin_ride_offer_projection')
+      .values({
+        offer_id: envelope.data.offer_id,
+        ride_request_id: envelope.data.ride_request_id,
+        driver_id: envelope.data.driver_id,
+        status: 'accepted',
+        responded_at: occurredAt,
+        updated_at: occurredAt,
+      })
+      .onConflict((oc) =>
+        oc.column('offer_id').doUpdateSet({
+          status: 'accepted',
+          responded_at: occurredAt,
+          updated_at: occurredAt,
+        }),
+      )
+      .execute();
+  }
+}

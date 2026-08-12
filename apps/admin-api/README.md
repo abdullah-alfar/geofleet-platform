@@ -14,10 +14,12 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 3 of 8 — admin read database.** `admin_read` schema
-(owned by the same `admin_api` role Phase 2 created), Kysely migrations,
-the inbox table, and five projection tables + regional metrics — all
-empty until Phase 4's Kafka consumers populate them. See
+**Status: Phase 4 of 8 — Kafka projection consumers.** One consumer
+(group `admin-api`), 9 live topics, idempotent per-handler inbox pattern.
+Live-verified: real historical replay (7-day Kafka retention) populated
+hundreds of real rows on first connect; fresh traffic from
+`scripts/loadtest` produced exact, correct deltas; restart-idempotency
+confirmed no reprocessing. See
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
 full phase plan.
 
@@ -26,22 +28,26 @@ full phase plan.
 ```
 src/
   main.ts                    Bootstrap: helmet, CORS, body limits, global pipe, Swagger, global prefix, listen
-  app.module.ts               Root wiring: config, logger, throttler, postgres, database, health, metrics, audit, auth
+  app.module.ts               Root wiring: config, logger, throttler, postgres, database, health, metrics, audit, auth, kafka
   config/                     Joi-validated environment config (fails fast on boot)
   common/
     middleware/                Correlation-ID middleware
     interceptors/               Response envelope ({ data: ... })
     filters/                     Global exception filter ({ error: { code, message, correlation_id } })
-    types/                       Express Request augmentation (correlationId, admin)
+    types/                       Express Request augmentation (correlationId, admin), kafkajs-snappy ambient types
   health/                      /health (liveness), /ready (Redis/Kafka/core-api/Postgres indicators)
   metrics/                     /metrics (Prometheus text exposition, own Registry)
   integrations/
     postgres/                   Shared pg.Pool, connected as the admin_api role (search_path: admin_read, public)
+    kafka/                       KafkaConsumerService (9 live topics, fromBeginning), envelope parsing/validation
   database/
     schema.ts                   Typed Database interface for every admin_read table
     database.module.ts          Kysely<Database> DI provider, wraps the shared pg.Pool
     migrate.ts                   Standalone migration CLI (npm run migrate -- up|down|status)
     migrations/                  admin_consumer_inbox, driver/ride/ride-offer/trip/payment projections, region_metrics
+  projections/
+    projection-dispatcher.service.ts   Inbox-checked, transactional event_type -> handler routing
+    handlers/                    One handler class per live event_type (9 total)
   modules/
     auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
     audit/                       AuditService — structured-log-only foundation, durable storage not yet needed
@@ -87,6 +93,12 @@ curl http://localhost:3001/api/v1/admin/session -H "Authorization: Bearer $TOKEN
 
 # Without a token: 401
 curl -i http://localhost:3001/api/v1/admin/session
+
+# Projections populating (needs the Kafka consumer running — check logs
+# for "Kafka consumer running: group \"admin-api\"", then generate real
+# traffic, e.g. cd scripts/loadtest && go run . -drivers=5 -customers=3)
+docker compose exec postgres psql -U core_api -d core_api \
+  -c "SELECT count(*) FROM admin_read.admin_ride_projection;"
 ```
 
 Swagger/OpenAPI UI (non-production only, same convention as core-api's

@@ -61,6 +61,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
           details = b.message;
         } else if (typeof b.message === 'string') {
           message = b.message;
+          // A resource-specific code (e.g. `new NotFoundException({ code:
+          // 'driver_not_found', message: '...' })`) overrides the generic
+          // status-derived one — opt-in, most exceptions don't set it and
+          // fall back to STATUS_CODES as before.
+          if (typeof b.code === 'string') {
+            code = b.code;
+          }
         }
       }
     } else {

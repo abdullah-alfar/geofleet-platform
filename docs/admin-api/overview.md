@@ -63,9 +63,15 @@ means admin-api's own Phase 1, not the platform's.
    that wasn't in this phase's actual scope (only the 5 tables + inbox
    the original plan named); `AuditService` stays log-only until a real
    need for durable audit history shows up.
-4. **Kafka projection consumers** — not started. Idempotent handlers for
-   the live topics in [kafka-projections.md](kafka-projections.md)
-   (written once this phase starts).
+4. **Kafka projection consumers** — done. One consumer (group
+   `admin-api`), 9 live topics, `fromBeginning: true` (backfills from
+   Kafka's 7-day retention on first run). Idempotent per-handler inbox
+   pattern, one handler per event_type. `admin_trip_projection`/
+   `admin_payment_projection` still have no consumer — their topics are
+   still producer-less (see [kafka-projections.md](kafka-projections.md)).
+   Live-verified against real historical replay (106/256/189 rows on
+   first connect) and fresh traffic from `scripts/loadtest`, with exact
+   row-count deltas and a restart-idempotency check.
 5. **Admin query APIs** — not started. Dashboard, drivers, rides, trips,
    payments, with cursor pagination.
 6. **Laravel command integration** — not started. Requires core-api to
@@ -96,6 +102,8 @@ tokens, the actual `PermissionsGuard`) is unblocked and can now proceed.
   Phase 2's auth chain and permission model.
 - [read-models.md](read-models.md) — Phase 3's `admin_read` schema, tables,
   and indexes.
+- [kafka-projections.md](kafka-projections.md) — Phase 4's consumer
+  pipeline, idempotency, and what live verification found.
 - [../architecture/container-diagram.md](../architecture/container-diagram.md) —
   the platform-wide container diagram; admin-api isn't on it yet since it
   wasn't part of the 8-phase plan that diagram describes — revisit once

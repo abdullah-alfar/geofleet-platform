@@ -14,6 +14,12 @@ import { PostgresModule } from './integrations/postgres/postgres.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { KafkaModule } from './integrations/kafka/kafka.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { DriversModule } from './modules/drivers/drivers.module';
+import { RidesModule } from './modules/rides/rides.module';
+import { TripsModule } from './modules/trips/trips.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -66,6 +72,12 @@ import { AuditModule } from './modules/audit/audit.module';
     MetricsModule,
     AuditModule,
     AuthModule,
+    KafkaModule,
+    DashboardModule,
+    DriversModule,
+    RidesModule,
+    TripsModule,
+    PaymentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -224,13 +224,12 @@ forwards operational commands to core-api's internal API rather than
 mutating Laravel-owned tables — see
 [docs/admin-api/overview.md](docs/admin-api/overview.md) and
 [docs/admin-api/architecture.md](docs/admin-api/architecture.md) for the
-full design and its own phase plan. **Status: Phase 3 of 8 —
-admin read database** (a `admin_read` Postgres schema owned outright by
-the `admin_api` role, Kysely migrations, five projection tables + an
-inbox + regional metrics — all empty until Phase 4's Kafka consumers
-populate them — see
-[docs/admin-api/read-models.md](docs/admin-api/read-models.md); no Kafka
-consumers or business endpoints yet).
+full design and its own phase plan. **Status: Phase 4 of 8 — Kafka
+projection consumers** (9 live topics, idempotent inbox pattern, one
+handler per event type — live-verified against real historical Kafka
+replay and fresh load-test traffic, see
+[docs/admin-api/kafka-projections.md](docs/admin-api/kafka-projections.md);
+no business query/command endpoints yet).
 
 ## Load testing
 
