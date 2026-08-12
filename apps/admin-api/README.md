@@ -14,12 +14,10 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 4 of 8 — Kafka projection consumers.** One consumer
-(group `admin-api`), 9 live topics, idempotent per-handler inbox pattern.
-Live-verified: real historical replay (7-day Kafka retention) populated
-hundreds of real rows on first connect; fresh traffic from
-`scripts/loadtest` produced exact, correct deltas; restart-idempotency
-confirmed no reprocessing. See
+**Status: Phase 5 of 8 — admin query APIs.** 11 endpoints across
+dashboard, drivers, rides (+offers), trips, payments — cursor-paginated,
+filtered, permission-gated for real (a `finance_admin` token is verified
+live to get 403 on `/drivers`, 200 on `/payments`). See
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
 full phase plan.
 
@@ -28,12 +26,13 @@ full phase plan.
 ```
 src/
   main.ts                    Bootstrap: helmet, CORS, body limits, global pipe, Swagger, global prefix, listen
-  app.module.ts               Root wiring: config, logger, throttler, postgres, database, health, metrics, audit, auth, kafka
+  app.module.ts               Root wiring: config, logger, throttler, postgres, database, health, metrics, audit, auth, kafka, query modules
   config/                     Joi-validated environment config (fails fast on boot)
   common/
     middleware/                Correlation-ID middleware
     interceptors/               Response envelope ({ data: ... })
     filters/                     Global exception filter ({ error: { code, message, correlation_id } })
+    pagination/                  Cursor encode/decode, shared PaginationQueryDto, PaginatedResponse<T>
     types/                       Express Request augmentation (correlationId, admin), kafkajs-snappy ambient types
   health/                      /health (liveness), /ready (Redis/Kafka/core-api/Postgres indicators)
   metrics/                     /metrics (Prometheus text exposition, own Registry)
@@ -51,6 +50,11 @@ src/
   modules/
     auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
     audit/                       AuditService — structured-log-only foundation, durable storage not yet needed
+    dashboard/                   GET /dashboard/summary, /dashboard/regions
+    drivers/                     GET /drivers, /drivers/:id
+    rides/                       GET /rides, /rides/:id (+ timeline), /rides/:id/offers (+ is_expired)
+    trips/                       GET /trips, /trips/:id (+ timeline) — always empty until Phase 4's producer gap closes
+    payments/                    GET /payments, /payments/:id — always empty until Phase 4's producer gap closes
 ```
 
 ## Running locally

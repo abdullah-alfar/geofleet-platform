@@ -72,8 +72,17 @@ means admin-api's own Phase 1, not the platform's.
    Live-verified against real historical replay (106/256/189 rows on
    first connect) and fresh traffic from `scripts/loadtest`, with exact
    row-count deltas and a restart-idempotency check.
-5. **Admin query APIs** — not started. Dashboard, drivers, rides, trips,
-   payments, with cursor pagination.
+5. **Admin query APIs** — done. 11 endpoints across dashboard, drivers,
+   rides (+offers), trips, payments — all cursor-paginated, all gated by
+   `AuthGuard`+`PermissionsGuard` with real per-domain `*.view`
+   permissions. No `/drivers/:id/timeline` or `/trips/:id/timeline` (no
+   data source — see [query-apis.md](query-apis.md)); ride/trip
+   milestones embedded in their detail responses instead. Dashboard reads
+   live aggregates from the projection tables, not the still-unpopulated
+   `admin_region_metrics`. Live-verified with real permission enforcement
+   (a `finance_admin` token correctly got 403 on `/drivers`, 200 on
+   `/payments`) and exact-match freshness-window counts against fresh
+   `scripts/loadtest` traffic.
 6. **Laravel command integration** — not started. Requires core-api to
    grow an `internal/v1/*` route group and a service-to-service auth
    mechanism that don't exist today — see
@@ -104,7 +113,11 @@ tokens, the actual `PermissionsGuard`) is unblocked and can now proceed.
   and indexes.
 - [kafka-projections.md](kafka-projections.md) — Phase 4's consumer
   pipeline, idempotency, and what live verification found.
+- [query-apis.md](query-apis.md) — Phase 5's endpoints, cursor
+  pagination, and the two scope decisions behind them.
 - [../architecture/container-diagram.md](../architecture/container-diagram.md) —
-  the platform-wide container diagram; admin-api isn't on it yet since it
-  wasn't part of the 8-phase plan that diagram describes — revisit once
-  admin-api reaches Phase 5 (real query traffic).
+  the platform-wide container diagram; admin-api still isn't on it. Now
+  that Phase 5 has real query traffic (the condition that note was
+  waiting on), updating that diagram to include admin-api is a
+  reasonable next documentation task — not done as part of this phase to
+  avoid scope creep into a doc outside `docs/admin-api/`.
