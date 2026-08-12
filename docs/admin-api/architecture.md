@@ -38,15 +38,44 @@ The last relationship is drawn deliberately to make the forbidden edge
 visible, not to describe real traffic — see "Critical architecture rule"
 below.
 
-## What's actually built as of Phase 1
+## What's actually built (all 7 phases complete)
 
-Only the `admin-api` container itself exists, and only its foundation:
-HTTP server, config validation, structured logging, correlation-id
-propagation, a response/error envelope, `/health` + `/ready` (checking
-Redis, Kafka, core-api — not Postgres, see
-[overview.md](overview.md)'s Phase 3 note), Prometheus `/metrics`, and
-Swagger at `/docs`. `admin_read`, the Kafka consumers, and the Laravel
-command integration are all still Phase 3/4/6 — not built, not stubbed.
+The diagram above was drawn as a *target* architecture in Phase 0/1; as of
+Phase 7 it is the *actual* one — every relationship it draws is real,
+live-verified traffic, not aspiration. Per phase (see
+[overview.md](overview.md) for the full phase-by-phase detail and what
+each one's own live verification found):
+
+- **Phase 1** — HTTP server, config validation, structured logging,
+  correlation-id propagation, response/error envelope, `/health` +
+  `/ready`, Prometheus `/metrics`, Swagger at `/docs`.
+- **Phase 2** — Sanctum-token verification against Postgres directly (no
+  call back into core-api), `AuthGuard`/`PermissionsGuard`, log-only audit
+  foundation.
+- **Phase 3** — the `admin_read` schema, owned outright by the `admin_api`
+  role; Kysely migrations for 5 projection tables + inbox + region
+  metrics.
+- **Phase 4** — one Kafka consumer, 9 live topics, idempotent per-handler
+  inbox pattern, `fromBeginning: true` historical backfill.
+- **Phase 5** — 11 cursor-paginated, permission-gated query endpoints
+  across dashboard/drivers/rides/trips/payments.
+- **Phase 6** — core-api's `internal/v1/*` API (shared-secret
+  authenticated) and 3 forwarded commands (`drivers.suspend`,
+  `trips.cancel`, `payments.refund`), each landing as a real Postgres
+  write, an `audit_logs` row, and — where a topic exists for it — a Kafka
+  event.
+- **Phase 7** — the only Redis reads beyond a health ping: a throttled,
+  region-scoped live driver map, live driver counters, and a computed
+  incident feed, all sourced from dispatch-service's own Redis index.
+
+Nothing in the target diagram above is unbuilt or stubbed. The one
+deliberate gap that remains isn't in admin-api at all: two of the five
+`admin_read` projection tables (`admin_trip_projection`,
+`admin_payment_projection`) stay empty because core-api itself has no
+`trips`/`payments`-creating flow yet — a producer-side gap this service
+can't close from its own side, documented in
+[read-models.md](read-models.md) and revisited in every later phase's own
+docs.
 
 ## Critical architecture rule: query/command separation
 

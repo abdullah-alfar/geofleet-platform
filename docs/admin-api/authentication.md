@@ -72,10 +72,14 @@ real admin tokens (`super_admin`, `viewer`), a real but non-admin
 customer token (correctly rejected — proves this isn't just "is the token
 valid," it's "is this specifically an admin"), and malformed/unknown/
 wrong-secret tokens. `PermissionsGuard`'s permission-matching logic
-(pure, no I/O) is covered by Jest unit tests instead
-(`src/modules/auth/guards/permissions.guard.spec.ts`) — there's no real
-permission-gated business endpoint yet to prove it against live without
-manufacturing one ahead of Phase 5.
+(pure, no I/O) is covered by Jest unit tests
+(`src/modules/auth/guards/permissions.guard.spec.ts`) *and*, as of Phase 5
+onward, real HTTP traffic against real permission-gated endpoints — every
+later phase's own docs record a `finance_admin`/`operations_admin`/
+`viewer` token getting exactly the `200`/`403` its abilities predict
+(see [query-apis.md](query-apis.md), [laravel-integration.md](laravel-integration.md),
+[realtime-operations.md](realtime-operations.md)) — not just the unit
+tests in isolation.
 
 ## A real bug this live verification caught
 

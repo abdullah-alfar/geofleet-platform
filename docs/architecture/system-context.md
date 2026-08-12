@@ -3,7 +3,7 @@
 This is a C4-style *system context* view: the platform as a single black
 box, its human actors, and the external systems it depends on. Internal
 service boundaries (core-api, location-service, dispatch-service,
-realtime-gateway) are documented separately in
+realtime-gateway, admin-api) are documented separately in
 [container-diagram.md](container-diagram.md) — showing them here would be
 speculative at the system-context level of detail.
 
@@ -14,7 +14,7 @@ speculative at the system-context level of detail.
 - **Driver** — receives ride offers, accepts/rejects them, sends GPS
   updates continuously while online, completes trips.
 - **Admin / Operator** — manages business configuration, views audit logs,
-  operates the platform via an admin dashboard (owned by core-api).
+  operates the platform via an admin dashboard.
 - **Payment provider** (external, out of scope for MVP implementation but
   modeled in the domain) — settles trip payments.
 

@@ -11,6 +11,7 @@ import { CommonModule } from './common/common.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { PostgresModule } from './integrations/postgres/postgres.module';
+import { RedisModule } from './integrations/redis/redis.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -20,6 +21,7 @@ import { DriversModule } from './modules/drivers/drivers.module';
 import { RidesModule } from './modules/rides/rides.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -67,6 +69,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     }),
     CommonModule,
     PostgresModule,
+    RedisModule,
     DatabaseModule,
     HealthModule,
     MetricsModule,
@@ -78,6 +81,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     RidesModule,
     TripsModule,
     PaymentsModule,
+    RealtimeModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

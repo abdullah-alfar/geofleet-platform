@@ -14,15 +14,18 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 6 of 8 — Laravel command integration.** Phase 5's 11 query
-endpoints, plus 3 command endpoints (`POST /drivers/:id/suspend`,
-`/trips/:id/cancel`, `/payments/:id/refund`) that forward to a new
-core-api `internal/v1/*` API — shared-secret authenticated (see
+**Status: Phase 7 of 8 — realtime operations, all phases complete.**
+Phase 5's 11 query endpoints, Phase 6's 3 command endpoints (forward to
+core-api's `internal/v1/*` — see
 [ADR 0010](../../docs/decisions/0010-internal-service-authentication.md)),
-permission-gated the same way the query endpoints are (`operations_admin`
-verified live to succeed on suspend/cancel and get 403 on refund; the
-reverse for `finance_admin`). See
-[docs/admin-api/laravel-integration.md](../../docs/admin-api/laravel-integration.md)
+and Phase 7's realtime module: a throttled, region-scoped live driver map
+and live driver counters sourced directly from dispatch-service's own
+Redis index (`dispatch:driver:{id}` — the only Redis reads in admin-api
+beyond a health ping), plus a computed incident feed (stale-searching
+rides, drivers gone silent mid-trip). Live-verified against real
+`scripts/loadtest` traffic and against 86 real stuck ride requests already
+present in this platform's data — see
+[docs/admin-api/realtime-operations.md](../../docs/admin-api/realtime-operations.md)
 and [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
 full phase plan.
 
@@ -45,6 +48,7 @@ src/
     postgres/                   Shared pg.Pool, connected as the admin_api role (search_path: admin_read, public)
     kafka/                       KafkaConsumerService (9 live topics, fromBeginning), envelope parsing/validation
     core-api/                    CoreApiClientService — forwards commands to core-api's internal/v1/* API
+    redis/                       Shared persistent ioredis client (REDIS_CLIENT) — realtime module's read-only Redis reads
   database/
     schema.ts                   Typed Database interface for every admin_read table
     database.module.ts          Kysely<Database> DI provider, wraps the shared pg.Pool
@@ -61,6 +65,7 @@ src/
     rides/                       GET /rides, /rides/:id (+ timeline), /rides/:id/offers (+ is_expired)
     trips/                       GET /trips, /trips/:id (+ timeline), POST /trips/:id/cancel — GETs always empty until Phase 4's producer gap closes
     payments/                    GET /payments, /payments/:id, POST /payments/:id/refund — GETs always empty until Phase 4's producer gap closes
+    realtime/                    GET /realtime/regions/:id/{drivers,counters}, /realtime/incidents — the only Redis-backed reads beyond health checks
 ```
 
 ## Running locally

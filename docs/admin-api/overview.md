@@ -104,8 +104,24 @@ means admin-api's own Phase 1, not the platform's.
    the idempotency/conflict semantics, and a real bug it caught
    (`AuditLog` had no `#[Fillable]`, so nothing had ever written to
    `audit_logs` before this phase).
-7. **Realtime operations** — not started. Live dashboard counters, a
-   throttled/region-scoped driver map, incident updates.
+7. **Realtime operations** — done. The only admin-api module that reads
+   Redis for anything beyond a health ping: a region-scoped, throttled
+   live driver map and live driver counters
+   (`GET /realtime/regions/:regionId/{drivers,counters}`), both sourced
+   from dispatch-service's own `dispatch:driver:{id}` Redis keys — never
+   `dispatch:geocell:*`, admin-api doesn't re-implement geohash search — 
+   plus a computed incident feed (`GET /realtime/incidents`: stale
+   `searching` rides, drivers gone silent mid-trip) built entirely from
+   data this platform already has, no new domain model. Live-verified
+   against real `scripts/loadtest` traffic (6/6 drivers matched exactly
+   between the map and the counters) and, notably, against **86 real**
+   stale-searching-ride incidents already sitting in this platform's data
+   from earlier load-testing phases — a real, previously-invisible
+   operational gap this endpoint surfaced without any fabricated test
+   data. See [realtime-operations.md](realtime-operations.md) for the
+   freshness bug it caught (a deleted driver's orphaned Redis key would
+   have rendered a phantom pin at 0,0) and the incident-cap bug it caught
+   (an unbounded query would have returned all 86+ rows).
 
 ## Known gap from Phase 0 — resolved
 
@@ -134,6 +150,9 @@ tokens, the actual `PermissionsGuard`) is unblocked and can now proceed.
 - [laravel-integration.md](laravel-integration.md) — Phase 6's command
   chain, error propagation, idempotency semantics, and which Kafka events
   do (and don't) fire.
+- [realtime-operations.md](realtime-operations.md) — Phase 7's Redis
+  usage, the freshness/incident-cap bugs live testing caught, and what
+  could and couldn't be verified organically.
 - [../architecture/container-diagram.md](../architecture/container-diagram.md) —
   the platform-wide container diagram; admin-api still isn't on it. Now
   that Phase 5 has real query traffic (the condition that note was

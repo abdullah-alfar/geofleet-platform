@@ -224,18 +224,22 @@ forwards operational commands to core-api's internal API rather than
 mutating Laravel-owned tables — see
 [docs/admin-api/overview.md](docs/admin-api/overview.md) and
 [docs/admin-api/architecture.md](docs/admin-api/architecture.md) for the
-full design and its own phase plan. **Status: Phase 6 of 8 — Laravel
-command integration** (11 cursor-paginated query endpoints from Phase 5,
-plus 3 command endpoints — `drivers.suspend`, `trips.cancel`,
-`payments.refund` — that forward to a new core-api `internal/v1/*` API
-gated by a shared secret, never a direct write to core-api's tables; see
-[ADR 0010](docs/decisions/0010-internal-service-authentication.md). All 3
-commands live-verified end-to-end: real Postgres writes, real per-domain
-permission enforcement, and a real Kafka message read straight off
-`trip.cancelled.v1` — the first live producer for a topic reserved since
-Phase 1. See
-[docs/admin-api/laravel-integration.md](docs/admin-api/laravel-integration.md);
-next is Phase 7, realtime operations).
+full design and its own phase plan. **Status: Phase 7 of 8 — realtime
+operations, all phases complete.** Phases 5-6 (query APIs + Laravel
+command integration — see
+[docs/admin-api/laravel-integration.md](docs/admin-api/laravel-integration.md)
+and [ADR 0010](docs/decisions/0010-internal-service-authentication.md))
+plus Phase 7: a throttled, region-scoped live driver map and live driver
+counters sourced directly from dispatch-service's own Redis index, and a
+computed incident feed (stale-searching rides, drivers gone silent
+mid-trip) built from data this platform already has — no new domain
+model. Live-verified against real `scripts/loadtest` traffic and, more
+notably, against 86 real stuck ride requests already present in this
+platform's data from earlier load-testing phases — a real operational gap
+with no prior visibility. See
+[docs/admin-api/realtime-operations.md](docs/admin-api/realtime-operations.md)
+for the freshness bug (an orphaned Redis key that would have shown a
+phantom driver at 0,0) and unbounded-query bug it caught live.
 
 ## Load testing
 
