@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "core-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/core-api && php artisan serve --port=8000"],
+      "port": 8000
+    },
+    {
+      "name": "admin-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/admin-api && npm run start:dev"],
+      "port": 3001
+    },
+    {
+      "name": "admin-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/admin-web && npm run dev"],
+      "port": 3000
+    }
+  ]
+}
