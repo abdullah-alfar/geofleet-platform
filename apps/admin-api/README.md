@@ -14,11 +14,16 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 5 of 8 — admin query APIs.** 11 endpoints across
-dashboard, drivers, rides (+offers), trips, payments — cursor-paginated,
-filtered, permission-gated for real (a `finance_admin` token is verified
-live to get 403 on `/drivers`, 200 on `/payments`). See
-[docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
+**Status: Phase 6 of 8 — Laravel command integration.** Phase 5's 11 query
+endpoints, plus 3 command endpoints (`POST /drivers/:id/suspend`,
+`/trips/:id/cancel`, `/payments/:id/refund`) that forward to a new
+core-api `internal/v1/*` API — shared-secret authenticated (see
+[ADR 0010](../../docs/decisions/0010-internal-service-authentication.md)),
+permission-gated the same way the query endpoints are (`operations_admin`
+verified live to succeed on suspend/cancel and get 403 on refund; the
+reverse for `finance_admin`). See
+[docs/admin-api/laravel-integration.md](../../docs/admin-api/laravel-integration.md)
+and [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
 full phase plan.
 
 ## Structure
@@ -39,6 +44,7 @@ src/
   integrations/
     postgres/                   Shared pg.Pool, connected as the admin_api role (search_path: admin_read, public)
     kafka/                       KafkaConsumerService (9 live topics, fromBeginning), envelope parsing/validation
+    core-api/                    CoreApiClientService — forwards commands to core-api's internal/v1/* API
   database/
     schema.ts                   Typed Database interface for every admin_read table
     database.module.ts          Kysely<Database> DI provider, wraps the shared pg.Pool
@@ -51,10 +57,10 @@ src/
     auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
     audit/                       AuditService — structured-log-only foundation, durable storage not yet needed
     dashboard/                   GET /dashboard/summary, /dashboard/regions
-    drivers/                     GET /drivers, /drivers/:id
+    drivers/                     GET /drivers, /drivers/:id, POST /drivers/:id/suspend
     rides/                       GET /rides, /rides/:id (+ timeline), /rides/:id/offers (+ is_expired)
-    trips/                       GET /trips, /trips/:id (+ timeline) — always empty until Phase 4's producer gap closes
-    payments/                    GET /payments, /payments/:id — always empty until Phase 4's producer gap closes
+    trips/                       GET /trips, /trips/:id (+ timeline), POST /trips/:id/cancel — GETs always empty until Phase 4's producer gap closes
+    payments/                    GET /payments, /payments/:id, POST /payments/:id/refund — GETs always empty until Phase 4's producer gap closes
 ```
 
 ## Running locally

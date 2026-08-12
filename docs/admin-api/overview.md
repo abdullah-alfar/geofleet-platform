@@ -83,11 +83,27 @@ means admin-api's own Phase 1, not the platform's.
    (a `finance_admin` token correctly got 403 on `/drivers`, 200 on
    `/payments`) and exact-match freshness-window counts against fresh
    `scripts/loadtest` traffic.
-6. **Laravel command integration** — not started. Requires core-api to
-   grow an `internal/v1/*` route group and a service-to-service auth
-   mechanism that don't exist today — see
-   [laravel-integration.md](laravel-integration.md) (written once this
-   phase starts) for the exact contract this service needs from core-api.
+6. **Laravel command integration** — done. core-api grew `internal/v1/*`
+   (shared-secret auth — [ADR 0010](../decisions/0010-internal-service-authentication.md)),
+   three commands (`drivers.suspend`, `trips.cancel`, `payments.refund`),
+   each a conditional atomic Postgres update plus a first-ever write to
+   the previously-unused `audit_logs` table. admin-api forwards to it via
+   `CoreApiClientService`, gated by the same real per-domain permissions
+   Phase 5's queries use. `driver.status.changed.v1` is reused for
+   suspend (so dispatch-service's existing consumer drops a suspended
+   driver from matching immediately); `trip.cancelled.v1` — reserved
+   since Phase 1 but never produced — got its first live producer.
+   `payments.refund` deliberately publishes nothing (no
+   `payment.refunded.v1` topic exists — see
+   [laravel-integration.md](laravel-integration.md)). Live-verified
+   end-to-end: real Postgres writes, a real Kafka message consumed
+   straight off `trip.cancelled.v1`, real audit rows, and real permission
+   enforcement (`operations_admin` succeeding on suspend/cancel and
+   getting `403` on refund; the reverse for `finance_admin`) — see
+   [laravel-integration.md](laravel-integration.md) for the full chain,
+   the idempotency/conflict semantics, and a real bug it caught
+   (`AuditLog` had no `#[Fillable]`, so nothing had ever written to
+   `audit_logs` before this phase).
 7. **Realtime operations** — not started. Live dashboard counters, a
    throttled/region-scoped driver map, incident updates.
 
@@ -115,6 +131,9 @@ tokens, the actual `PermissionsGuard`) is unblocked and can now proceed.
   pipeline, idempotency, and what live verification found.
 - [query-apis.md](query-apis.md) — Phase 5's endpoints, cursor
   pagination, and the two scope decisions behind them.
+- [laravel-integration.md](laravel-integration.md) — Phase 6's command
+  chain, error propagation, idempotency semantics, and which Kafka events
+  do (and don't) fire.
 - [../architecture/container-diagram.md](../architecture/container-diagram.md) —
   the platform-wide container diagram; admin-api still isn't on it. Now
   that Phase 5 has real query traffic (the condition that note was

@@ -4,6 +4,8 @@ import { KYSELY_DB } from '../../database/database.module';
 import { Database } from '../../database/schema';
 import { decodeCursor, encodeCursor } from '../../common/pagination/cursor';
 import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
+import { CoreApiClientService } from '../../integrations/core-api/core-api-client.service';
+import { AdminPrincipal } from '../auth/admin-principal.interface';
 import { ListTripsDto } from './dto/list-trips.dto';
 
 const TRIP_COLUMNS = [
@@ -61,7 +63,10 @@ function buildTimeline(row: TripRow): TripMilestone[] {
  */
 @Injectable()
 export class TripsService {
-  constructor(@Inject(KYSELY_DB) private readonly db: Kysely<Database>) {}
+  constructor(
+    @Inject(KYSELY_DB) private readonly db: Kysely<Database>,
+    private readonly coreApi: CoreApiClientService,
+  ) {}
 
   async list(filters: ListTripsDto): Promise<PaginatedResponse<TripRow>> {
     let query = this.db
@@ -150,5 +155,25 @@ export class TripsService {
     }
 
     return { ...row, timeline: buildTimeline(row) };
+  }
+
+  /**
+   * Forwards to core-api's internal/v1/trips/{id}/cancel. Can only
+   * meaningfully succeed against a trip in `in_progress` status — and
+   * since nothing in core-api creates `trips` rows yet (see the module
+   * comment above), there is today no real trip to cancel outside a
+   * manually-seeded one. The command itself is fully correct regardless.
+   */
+  async cancel(
+    tripId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    return this.coreApi.patch(
+      `/api/internal/v1/trips/${tripId}/cancel`,
+      { admin_user_id: admin.userId, reason },
+      correlationId,
+    );
   }
 }

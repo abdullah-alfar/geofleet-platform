@@ -1,8 +1,22 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import { CommandReasonDto } from '../../common/dto/command-reason.dto';
+import { CurrentAdmin } from '../auth/decorators/current-admin.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import type { AdminPrincipal } from '../auth/admin-principal.interface';
 import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
 import { ListPaymentsDto } from './dto/list-payments.dto';
 import { PaymentRow, PaymentsService } from './payments.service';
@@ -27,5 +41,20 @@ export class PaymentsController {
   @ApiOperation({ summary: 'A single payment by payment_id.' })
   findOne(@Param('id') id: string): Promise<PaymentRow> {
     return this.payments.findOne(id);
+  }
+
+  @Post(':id/refund')
+  @HttpCode(200)
+  @RequirePermissions('payments.refund')
+  @ApiOperation({
+    summary: 'Refund a payment — forwarded to core-api, not a local write.',
+  })
+  refund(
+    @Param('id') id: string,
+    @Body() dto: CommandReasonDto,
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.payments.refund(id, admin, dto.reason, req.correlationId);
   }
 }

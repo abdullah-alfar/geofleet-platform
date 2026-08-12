@@ -1,0 +1,113 @@
+import { HttpService } from '@nestjs/axios';
+import {
+  HttpException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { AxiosError } from 'axios';
+import { firstValueFrom } from 'rxjs';
+import { AppConfig } from '../../config/configuration';
+import { CORRELATION_ID_HEADER } from '../../common/constants';
+
+interface CoreApiErrorBody {
+  error?: { code?: string; message?: string; details?: unknown };
+}
+
+/**
+ * The one place admin-api is allowed to trigger a business-state mutation
+ * — by asking core-api's own domain logic to do it, never by writing to
+ * core-api's tables directly. See the critical architecture rule in
+ * docs/admin-api/overview.md and
+ * docs/decisions/0010-internal-service-authentication.md for the shared-
+ * secret transport auth this relies on.
+ *
+ * core-api's error envelope (`{ error: { code, message, ... } }`) is
+ * reshaped into the `{ message, code }` HttpException body shape
+ * AllExceptionsFilter already knows how to render — so a core-api
+ * `driver_not_found` 404 surfaces to admin-web as admin-api's own
+ * `driver_not_found` 404, not a generic wrapper error.
+ */
+@Injectable()
+export class CoreApiClientService {
+  private readonly logger = new Logger(CoreApiClientService.name);
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly internalToken: string;
+
+  constructor(
+    private readonly http: HttpService,
+    config: ConfigService<AppConfig, true>,
+  ) {
+    const coreApi = config.get('coreApi', { infer: true });
+    this.baseUrl = coreApi.baseUrl;
+    this.timeoutMs = coreApi.timeoutMs;
+    this.internalToken = coreApi.internalToken;
+  }
+
+  async patch<T>(
+    path: string,
+    body: Record<string, unknown>,
+    correlationId?: string,
+  ): Promise<T> {
+    const url = new URL(path, this.baseUrl).toString();
+
+    try {
+      const response = await firstValueFrom(
+        this.http.patch<T>(url, body, {
+          timeout: this.timeoutMs,
+          headers: {
+            'X-Internal-Service-Token': this.internalToken,
+            ...(correlationId
+              ? { [CORRELATION_ID_HEADER]: correlationId }
+              : {}),
+          },
+        }),
+      );
+      return response.data;
+    } catch (error) {
+      throw this.toAdminApiException(error, url);
+    }
+  }
+
+  private toAdminApiException(error: unknown, url: string): Error {
+    if (!(error instanceof AxiosError)) {
+      return error instanceof Error ? error : new Error('Unknown error');
+    }
+
+    if (!error.response) {
+      // Network error, connection refused, or timeout — core-api itself
+      // never ran the request, so there's nothing to pass through.
+      this.logger.error(`core-api unreachable: ${error.message} (${url})`);
+      return new ServiceUnavailableException({
+        code: 'core_api_unavailable',
+        message: 'core-api is unreachable.',
+      });
+    }
+
+    const status = error.response.status;
+    const body = error.response.data as CoreApiErrorBody | undefined;
+
+    if (body?.error?.message) {
+      return new HttpException(
+        {
+          message: body.error.message,
+          code: body.error.code ?? 'core_api_error',
+          ...(body.error.details !== undefined
+            ? { details: body.error.details }
+            : {}),
+        },
+        status,
+      );
+    }
+
+    return new HttpException(
+      {
+        message: 'core-api returned an unexpected error.',
+        code: 'core_api_error',
+      },
+      status >= 400 && status < 600 ? status : 502,
+    );
+  }
+}

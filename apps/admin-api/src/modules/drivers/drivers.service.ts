@@ -4,6 +4,8 @@ import { KYSELY_DB } from '../../database/database.module';
 import { Database } from '../../database/schema';
 import { decodeCursor, encodeCursor } from '../../common/pagination/cursor';
 import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
+import { CoreApiClientService } from '../../integrations/core-api/core-api-client.service';
+import { AdminPrincipal } from '../auth/admin-principal.interface';
 import { ListDriversDto } from './dto/list-drivers.dto';
 
 const DRIVER_COLUMNS = [
@@ -32,7 +34,10 @@ export type DriverRow = Pick<
 
 @Injectable()
 export class DriversService {
-  constructor(@Inject(KYSELY_DB) private readonly db: Kysely<Database>) {}
+  constructor(
+    @Inject(KYSELY_DB) private readonly db: Kysely<Database>,
+    private readonly coreApi: CoreApiClientService,
+  ) {}
 
   async list(filters: ListDriversDto): Promise<PaginatedResponse<DriverRow>> {
     let query = this.db
@@ -124,5 +129,23 @@ export class DriversService {
     }
 
     return row;
+  }
+
+  /**
+   * Forwards to core-api's internal/v1/drivers/{id}/suspend — the actual
+   * mutation (drivers.status, is_available, audit log, outbox event) all
+   * happen there. See docs/admin-api/laravel-integration.md.
+   */
+  async suspend(
+    driverId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    return this.coreApi.patch(
+      `/api/internal/v1/drivers/${driverId}/suspend`,
+      { admin_user_id: admin.userId, reason },
+      correlationId,
+    );
   }
 }

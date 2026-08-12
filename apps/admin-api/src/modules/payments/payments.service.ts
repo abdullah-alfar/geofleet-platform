@@ -4,6 +4,8 @@ import { KYSELY_DB } from '../../database/database.module';
 import { Database } from '../../database/schema';
 import { decodeCursor, encodeCursor } from '../../common/pagination/cursor';
 import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
+import { CoreApiClientService } from '../../integrations/core-api/core-api-client.service';
+import { AdminPrincipal } from '../auth/admin-principal.interface';
 import { ListPaymentsDto } from './dto/list-payments.dto';
 
 const PAYMENT_COLUMNS = [
@@ -34,7 +36,10 @@ export type PaymentRow = Pick<
  */
 @Injectable()
 export class PaymentsService {
-  constructor(@Inject(KYSELY_DB) private readonly db: Kysely<Database>) {}
+  constructor(
+    @Inject(KYSELY_DB) private readonly db: Kysely<Database>,
+    private readonly coreApi: CoreApiClientService,
+  ) {}
 
   async list(filters: ListPaymentsDto): Promise<PaginatedResponse<PaymentRow>> {
     let query = this.db
@@ -112,5 +117,25 @@ export class PaymentsService {
     }
 
     return row;
+  }
+
+  /**
+   * Forwards to core-api's internal/v1/payments/{id}/refund. No Kafka
+   * event fires for this on core-api's side (no `payment.refunded.v1`
+   * topic — see PaymentCommandController::refund's own comment); the
+   * refund is still fully durable via core-api's `payments.status` write
+   * and its `audit_logs` row.
+   */
+  async refund(
+    paymentId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    return this.coreApi.patch(
+      `/api/internal/v1/payments/${paymentId}/refund`,
+      { admin_user_id: admin.userId, reason },
+      correlationId,
+    );
   }
 }

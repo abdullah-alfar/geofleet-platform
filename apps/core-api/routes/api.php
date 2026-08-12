@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Api\Internal\V1\DriverCommandController;
+use App\Http\Controllers\Api\Internal\V1\PaymentCommandController;
+use App\Http\Controllers\Api\Internal\V1\TripCommandController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DriverAvailabilityController;
 use App\Http\Controllers\Api\V1\DriverDeviceController;
@@ -58,4 +61,17 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('{trip:uuid}', [TripController::class, 'show'])->name('show');
         });
     });
+});
+
+// --- Internal: service-to-service only, no Sanctum, no end user -----------
+// Deliberately a sibling of the `v1` group above, not nested inside it —
+// `/api/internal/v1/*`, not `/api/v1/internal/v1/*`. Called exclusively by
+// apps/admin-api's Laravel command integration client — see
+// docs/decisions/0010-internal-service-authentication.md and
+// docs/admin-api/laravel-integration.md. Gated by a shared secret, not
+// `auth:sanctum` — there is no end-user session on this boundary.
+Route::prefix('internal/v1')->name('api.internal.v1.')->middleware('internal-service')->group(function () {
+    Route::patch('drivers/{driver:uuid}/suspend', [DriverCommandController::class, 'suspend'])->name('drivers.suspend');
+    Route::patch('trips/{trip:uuid}/cancel', [TripCommandController::class, 'cancel'])->name('trips.cancel');
+    Route::patch('payments/{payment:uuid}/refund', [PaymentCommandController::class, 'refund'])->name('payments.refund');
 });

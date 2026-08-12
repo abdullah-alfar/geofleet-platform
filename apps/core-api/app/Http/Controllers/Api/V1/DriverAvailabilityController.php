@@ -15,6 +15,14 @@ class DriverAvailabilityController extends Controller
         $driver = $request->user()->driver;
         $isAvailable = $request->boolean('is_available');
 
+        // A suspended driver (admin-forced — see
+        // App\Http\Controllers\Api\Internal\V1\DriverCommandController::suspend)
+        // must not be able to immediately toggle themselves back available;
+        // otherwise suspension has no actual effect on matchability.
+        if ($isAvailable && $driver->status === 'suspended') {
+            abort(403, 'This account is suspended and cannot go available.');
+        }
+
         DB::transaction(function () use ($driver, $isAvailable) {
             $driver->forceFill([
                 'is_available' => $isAvailable,

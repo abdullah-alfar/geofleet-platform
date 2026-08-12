@@ -224,12 +224,18 @@ forwards operational commands to core-api's internal API rather than
 mutating Laravel-owned tables — see
 [docs/admin-api/overview.md](docs/admin-api/overview.md) and
 [docs/admin-api/architecture.md](docs/admin-api/architecture.md) for the
-full design and its own phase plan. **Status: Phase 4 of 8 — Kafka
-projection consumers** (9 live topics, idempotent inbox pattern, one
-handler per event type — live-verified against real historical Kafka
-replay and fresh load-test traffic, see
-[docs/admin-api/kafka-projections.md](docs/admin-api/kafka-projections.md);
-no business query/command endpoints yet).
+full design and its own phase plan. **Status: Phase 6 of 8 — Laravel
+command integration** (11 cursor-paginated query endpoints from Phase 5,
+plus 3 command endpoints — `drivers.suspend`, `trips.cancel`,
+`payments.refund` — that forward to a new core-api `internal/v1/*` API
+gated by a shared secret, never a direct write to core-api's tables; see
+[ADR 0010](docs/decisions/0010-internal-service-authentication.md). All 3
+commands live-verified end-to-end: real Postgres writes, real per-domain
+permission enforcement, and a real Kafka message read straight off
+`trip.cancelled.v1` — the first live producer for a topic reserved since
+Phase 1. See
+[docs/admin-api/laravel-integration.md](docs/admin-api/laravel-integration.md);
+next is Phase 7, realtime operations).
 
 ## Load testing
 

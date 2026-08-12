@@ -31,6 +31,11 @@ export const validationSchema = Joi.object({
   CORE_API_BASE_URL: Joi.string().uri().required(),
   CORE_API_TIMEOUT_MS: Joi.number().integer().positive().default(3000),
 
+  // Required as of Phase 6 (Laravel command integration) — sent as
+  // X-Internal-Service-Token on internal/v1/* calls. See
+  // docs/decisions/0010-internal-service-authentication.md.
+  ADMIN_API_INTERNAL_TOKEN: Joi.string().required(),
+
   // Required as of Phase 2 (auth-only: verifies Sanctum tokens against the
   // admin_api role — see docs/decisions/0009-admin-identity.md). The
   // broader admin_read schema for Kafka projections is still Phase 3.

@@ -60,6 +60,11 @@ return [
     // docs/decisions/0009-admin-identity.md.
     'admin_api' => [
         'db_password' => env('ADMIN_API_DB_PASSWORD'),
+
+        // Shared secret admin-api sends as X-Internal-Service-Token on
+        // internal/v1/* requests. See
+        // docs/decisions/0010-internal-service-authentication.md.
+        'internal_token' => env('ADMIN_API_INTERNAL_TOKEN'),
     ],
 
 ];

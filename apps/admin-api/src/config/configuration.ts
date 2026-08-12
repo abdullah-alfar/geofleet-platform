@@ -16,6 +16,7 @@ export interface AppConfig {
   coreApi: {
     baseUrl: string;
     timeoutMs: number;
+    internalToken: string;
   };
   adminPostgresDsn: string;
 }
@@ -46,6 +47,7 @@ export default (): AppConfig => ({
   coreApi: {
     baseUrl: process.env.CORE_API_BASE_URL ?? 'http://127.0.0.1:8000',
     timeoutMs: Number(process.env.CORE_API_TIMEOUT_MS ?? 3000),
+    internalToken: process.env.ADMIN_API_INTERNAL_TOKEN ?? '',
   },
   adminPostgresDsn: process.env.ADMIN_API_POSTGRES_DSN ?? '',
 });

@@ -3,6 +3,7 @@
 use App\Http\Middleware\AssignCorrelationId;
 use App\Http\Middleware\EnsureLocalEnvironment;
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\VerifyInternalServiceToken;
 use App\Support\ApiError;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -37,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
             'local-only' => EnsureLocalEnvironment::class,
+            'internal-service' => VerifyInternalServiceToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
