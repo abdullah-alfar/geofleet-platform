@@ -121,7 +121,10 @@ func (h *LocationHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.publisher.PublishValidated(ctx, update, device.RegionID, correlationID); err != nil {
+	publishStart := time.Now()
+	err = h.publisher.PublishValidated(ctx, update, device.RegionID, correlationID)
+	h.metrics.KafkaPublishDuration.Observe(time.Since(publishStart).Seconds())
+	if err != nil {
 		h.metrics.KafkaPublishErrors.Inc()
 		h.logger.Error("failed to publish validated event", "error", err, "correlation_id", correlationID)
 		writeError(w, http.StatusServiceUnavailable, "publish_failed", "could not publish location update")

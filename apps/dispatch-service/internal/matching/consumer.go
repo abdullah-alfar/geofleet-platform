@@ -8,6 +8,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"dispatch-service/internal/kafka"
+	"dispatch-service/internal/metrics"
 	"dispatch-service/internal/types"
 )
 
@@ -17,7 +18,7 @@ import (
 // behavior — see internal/kafka.Consumer.Run) since a failed matching
 // attempt is worth retrying a couple of times before giving up, not a
 // permanently-malformed message.
-func NewRideRequestedHandler(matcher *Matcher, logger *slog.Logger) kafka.HandlerFunc {
+func NewRideRequestedHandler(matcher *Matcher, m *metrics.Metrics, logger *slog.Logger) kafka.HandlerFunc {
 	return func(ctx context.Context, record *kgo.Record) error {
 		var envelope kafka.Envelope
 		if err := json.Unmarshal(record.Value, &envelope); err != nil {
@@ -30,6 +31,12 @@ func NewRideRequestedHandler(matcher *Matcher, logger *slog.Logger) kafka.Handle
 			logger.Error("matching: malformed ride.requested data", "error", err, "event_id", envelope.EventID)
 			return nil
 		}
+
+		// Counts distinct ride.requested.v1 deliveries specifically —
+		// RunCycle itself is also re-entered by offer expiry and driver
+		// rejection (see matching.go's docblock), which aren't "received"
+		// events in the sense this metric names.
+		m.RideRequestsReceived.Inc()
 
 		eventID := envelope.EventID
 		return matcher.RunCycle(ctx, data.RideRequestID, envelope.CorrelationID, &eventID)

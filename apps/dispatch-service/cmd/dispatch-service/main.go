@@ -96,7 +96,7 @@ func run() error {
 	// internal/reliability and docs/decisions/0007). The other two topics
 	// only ever touch Redis and are idempotent/self-healing by construction
 	// (internal/indexconsumers) — no retry topic needed for those.
-	rideRequestedHandler := matching.NewRideRequestedHandler(matcher, logger)
+	rideRequestedHandler := matching.NewRideRequestedHandler(matcher, m, logger)
 
 	consumer, err := dispatchkafka.NewConsumer(
 		cfg.KafkaBrokers,
