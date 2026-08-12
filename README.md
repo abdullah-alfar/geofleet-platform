@@ -21,11 +21,11 @@ a capacity analysis grounded in real measurements against this stack (Phase
 [docs/architecture/scalability.md](docs/architecture/scalability.md), and
 [ADR 0008](docs/decisions/0008-load-testing-approach.md).
 
-Two documents `docs/architecture/system-context.md` itself flags as
-deferred remain genuinely not built: a container diagram and a Kafka
-data-flow doc (neither was any single phase's explicit deliverable — see
-that file's own "What this document intentionally excludes" section).
-Worth doing as a follow-up, not part of this phased plan.
+The container diagram and Kafka data-flow doc `docs/architecture/system-context.md`
+had flagged as deferred since Phase 0/2 are now built as a follow-up (not
+any single phase's explicit deliverable) — see
+[docs/architecture/container-diagram.md](docs/architecture/container-diagram.md)
+and [docs/architecture/data-flow.md](docs/architecture/data-flow.md).
 
 ## Repository layout
 

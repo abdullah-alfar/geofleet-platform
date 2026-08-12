@@ -4,8 +4,8 @@ This is a C4-style *system context* view: the platform as a single black
 box, its human actors, and the external systems it depends on. Internal
 service boundaries (core-api, location-service, dispatch-service,
 realtime-gateway) are documented separately in
-`docs/architecture/container-diagram.md` once those services exist
-(Phase 2+) — showing them here would be speculative.
+[container-diagram.md](container-diagram.md) — showing them here would be
+speculative at the system-context level of detail.
 
 ## Actors and external systems
 
@@ -50,13 +50,11 @@ rather than a schema migration.
 
 ## What this document intentionally excludes
 
-- Internal service boundaries and their interactions (container diagram,
-  added when those services exist) — still deferred; not built in any
-  phase so far, see the note in `README.md`'s Status section.
-- Data flow through Kafka topics (data-flow.md, added alongside the outbox
-  publisher in Phase 2) — still deferred, same reason.
-- Capacity/scalability numbers — **done**, see
-  [scalability.md](scalability.md) (Phase 8).
+- Internal service boundaries and their interactions — see
+  [container-diagram.md](container-diagram.md).
+- Data flow through Kafka topics — see [data-flow.md](data-flow.md).
+- Capacity/scalability numbers — see [scalability.md](scalability.md).
 
-These are deferred, not forgotten — see the phased plan in the repo root
-`README.md`.
+All three were genuine gaps this document flagged since Phase 0/2; all
+three are now filled as a post-phase-8 follow-up (not part of any single
+phase's explicit deliverable) — see the repo root `README.md`.
