@@ -35,6 +35,7 @@ apps/
   location-service/    Go 1.26.3 — GPS ingestion (Phase 3)
   dispatch-service/    Go 1.26.3 — driver matching (Phase 5)
   realtime-gateway/    Go 1.26.3 — WebSockets, fan-out (Phase 6)
+  admin-api/           NestJS 11 — Admin BFF: read models + command forwarding (additive, see docs/admin-api/)
 contracts/
   events/               Event schemas shared across services
   openapi/              REST API specification
@@ -201,6 +202,28 @@ the WebSocket auth reuse, the Redis Pub/Sub fan-out design, and the two
 correlation mappings that route events which don't carry a customer id
 (and why — see also
 [docs/decisions/0006](docs/decisions/0006-realtime-gateway-fanout.md)).
+
+## Quick start (admin-api)
+
+Requires Node 22. Run after the infrastructure above is up (core-api
+optional but needed for the `/ready` core-api indicator).
+
+```bash
+cd apps/admin-api
+cp .env.example .env
+npm install
+npm run start:dev
+```
+
+**Additive scope, not part of the 8-phase plan above.** admin-api is a
+NestJS Admin BFF: it builds its own read models from Kafka events and
+forwards operational commands to core-api's internal API rather than
+mutating Laravel-owned tables — see
+[docs/admin-api/overview.md](docs/admin-api/overview.md) and
+[docs/admin-api/architecture.md](docs/admin-api/architecture.md) for the
+full design and its own phase plan. **Status: Phase 1 of 8 —
+foundation only** (config, logging, correlation ids, health/readiness,
+metrics, Swagger; no auth, no database, no Kafka consumers yet).
 
 ## Load testing
 

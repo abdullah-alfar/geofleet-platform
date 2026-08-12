@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Support\AdminPermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,9 +47,9 @@ class AuthController extends Controller
             return $user->refresh();
         });
 
-        $token = $user->createToken('mobile')->plainTextToken;
+        $token = $this->issueToken($user);
 
-        return (new UserResource($user->load(['customer', 'driver'])))
+        return (new UserResource($user->load(['customer', 'driver', 'admin'])))
             ->additional(['meta' => ['token' => $token]])
             ->response()
             ->setStatusCode(201);
@@ -75,9 +76,9 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('mobile')->plainTextToken;
+        $token = $this->issueToken($user);
 
-        return (new UserResource($user->load(['customer', 'driver'])))
+        return (new UserResource($user->load(['customer', 'driver', 'admin'])))
             ->additional(['meta' => ['token' => $token]])
             ->response();
     }
@@ -91,6 +92,34 @@ class AuthController extends Controller
 
     public function me(Request $request): UserResource
     {
-        return new UserResource($request->user()->load(['customer', 'driver.activeVehicle']));
+        return new UserResource($request->user()->load(['customer', 'driver.activeVehicle', 'admin']));
+    }
+
+    /**
+     * Admin accounts get a token scoped to their admin_role's abilities
+     * (App\Support\AdminPermissions) instead of the unrestricted default —
+     * enforced by Sanctum's own tokenCan(), and readable directly from
+     * personal_access_tokens.abilities by any service that verifies this
+     * token the same way (see docs/decisions/0009-admin-identity.md).
+     * Customer/driver tokens are unaffected: full '*' abilities, same as
+     * before this admin support existed.
+     */
+    private function issueToken(User $user): string
+    {
+        if (! $user->isAdmin()) {
+            return $user->createToken('mobile')->plainTextToken;
+        }
+
+        $user->loadMissing('admin');
+
+        // An admin-role user with no admins row (shouldn't happen —
+        // provisioned only via `php artisan admin:create`) gets a token
+        // with zero abilities rather than a fatal error or, worse, an
+        // unrestricted one. Fails closed.
+        $abilities = $user->admin
+            ? AdminPermissions::for($user->admin->admin_role)
+            : [];
+
+        return $user->createToken('admin-api', $abilities)->plainTextToken;
     }
 }

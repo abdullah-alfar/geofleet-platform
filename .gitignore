@@ -30,6 +30,11 @@ apps/realtime-gateway/bin/
 **/*.exe
 **/*.test
 
+# admin-api (Node/NestJS)
+apps/admin-api/node_modules/
+apps/admin-api/dist/
+apps/admin-api/coverage/
+
 # Docker volumes / local data
 infrastructure/**/data/
 

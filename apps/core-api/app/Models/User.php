@@ -37,6 +37,11 @@ class User extends Authenticatable
         return $this->hasOne(Driver::class);
     }
 
+    public function admin(): HasOne
+    {
+        return $this->hasOne(Admin::class);
+    }
+
     public function isCustomer(): bool
     {
         return $this->role === 'customer';
@@ -45,5 +50,10 @@ class User extends Authenticatable
     public function isDriver(): bool
     {
         return $this->role === 'driver';
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
     }
 }

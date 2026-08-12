@@ -2,11 +2,12 @@
 
 namespace App\Http\Resources;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * @mixin \App\Models\User
+ * @mixin User
  */
 class UserResource extends JsonResource
 {
@@ -22,6 +23,7 @@ class UserResource extends JsonResource
             'region_id' => $this->region_id,
             'customer' => new CustomerResource($this->whenLoaded('customer')),
             'driver' => new DriverResource($this->whenLoaded('driver')),
+            'admin' => new AdminResource($this->whenLoaded('admin')),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

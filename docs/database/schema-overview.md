@@ -27,6 +27,7 @@ sequential IDs externally (AGENTS.md invariant).
 erDiagram
     USERS ||--o| CUSTOMERS : "has one"
     USERS ||--o| DRIVERS : "has one"
+    USERS ||--o| ADMINS : "has one"
     DRIVERS ||--o{ VEHICLES : "owns"
     DRIVERS ||--o{ DRIVER_DEVICES : "registers"
     CUSTOMERS ||--o{ RIDE_REQUESTS : "creates"
@@ -50,6 +51,7 @@ erDiagram
 | `users` | Auth identity for customers, drivers, and admins. `role` decides which profile table (if any) the user owns. |
 | `customers` | Customer profile, one per user. |
 | `drivers` | Driver profile, one per user. Carries `status` (approval state), `is_available`, rating/acceptance_rate used by future dispatch ranking. |
+| `admins` | Admin profile, one per user. Carries `admin_role` (super_admin/operations_admin/support_admin/finance_admin/viewer), mapped to Sanctum token abilities at login by `App\Support\AdminPermissions` — see [ADR 0009](../decisions/0009-admin-identity.md). Provisioned only via `php artisan admin:create`, never through `POST /api/v1/auth/register`. |
 | `vehicles` | A driver's vehicle(s). Exactly one `is_active = true` per driver, enforced by a partial unique index. |
 | `driver_devices` | Device credentials distinct from the driver's Sanctum user token — location-service (Phase 3) authenticates the device, not a logged-in session. |
 | `ride_requests` | A customer's request for a ride. `status` drives the matching state machine; `driver_id` is set only on successful atomic acceptance. |

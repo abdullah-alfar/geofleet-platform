@@ -55,4 +55,11 @@ return [
         'db_password' => env('REALTIME_GATEWAY_DB_PASSWORD'),
     ],
 
+    // Read-only, authentication-only Postgres role for apps/admin-api
+    // (NestJS). See database/migrations/*_create_admin_api_role.php and
+    // docs/decisions/0009-admin-identity.md.
+    'admin_api' => [
+        'db_password' => env('ADMIN_API_DB_PASSWORD'),
+    ],
+
 ];
