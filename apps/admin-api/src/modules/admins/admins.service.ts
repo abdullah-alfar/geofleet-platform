@@ -36,6 +36,7 @@ export class AdminsService {
   async list(correlationId: string | undefined): Promise<AdminAccountRow[]> {
     const response = await this.coreApi.get<{ data: AdminAccountRow[] }>(
       '/api/internal/v1/admins',
+      undefined,
       correlationId,
     );
     return response.data;

@@ -31,14 +31,6 @@ class DriverCommandController extends Controller
      * a caller/UI error (e.g. a double-click) that should surface as a
      * conflict, the same strictness `trips.cancel`/`payments.refund`
      * already apply to their own single-source-status transitions.
-     *
-     * No Kafka event: `driver.status.changed.v1`'s only real payload is
-     * `{driver_id, is_available}` (see docs/admin-api/kafka-projections.md)
-     * — approval doesn't change `is_available` (the driver still has to
-     * explicitly go online themselves), so there's nothing this event
-     * would honestly carry. No topic exists for a general status change
-     * either. Same "don't force data into an event that doesn't fit"
-     * reasoning as `payments.refund` publishing nothing.
      */
     public function approve(ApproveDriverRequest $request, Driver $driver): DriverResource
     {
@@ -50,6 +42,8 @@ class DriverCommandController extends Controller
             if ($affected === 0) {
                 abort(409, "Driver cannot be approved from its current status ('{$driver->status}').");
             }
+
+            $this->publishStatusChanged($driver, 'active');
 
             AdminAudit::record(
                 actor: $request->admin(),
@@ -120,17 +114,7 @@ class DriverCommandController extends Controller
                 return;
             }
 
-            Outbox::record(
-                aggregateType: 'driver',
-                aggregateId: $driver->uuid,
-                eventType: 'driver.status.changed',
-                eventVersion: 1,
-                data: [
-                    'driver_id' => $driver->uuid,
-                    'is_available' => false,
-                ],
-                regionId: $driver->region_id,
-            );
+            $this->publishStatusChanged($driver, $targetStatus, isAvailable: false);
 
             AdminAudit::record(
                 actor: $request->admin(),
@@ -151,9 +135,7 @@ class DriverCommandController extends Controller
      * only succeeds from `suspended`. A `disabled` driver does NOT become
      * active via this command — disable is meant to be a harder stop
      * than suspend, and silently letting "unsuspend" reverse it would
-     * undermine that distinction. No Kafka event, same reasoning as
-     * approve(): the driver still has to explicitly go online themselves
-     * afterward, so `is_available` genuinely hasn't changed.
+     * undermine that distinction.
      */
     public function unsuspend(UnsuspendDriverRequest $request, Driver $driver): DriverResource
     {
@@ -166,6 +148,8 @@ class DriverCommandController extends Controller
                 abort(409, "Driver cannot be unsuspended from its current status ('{$driver->status}').");
             }
 
+            $this->publishStatusChanged($driver, 'active');
+
             AdminAudit::record(
                 actor: $request->admin(),
                 action: 'driver.unsuspended',
@@ -177,5 +161,46 @@ class DriverCommandController extends Controller
         });
 
         return new DriverResource($driver->fresh());
+    }
+
+    /**
+     * All four commands publish through here now — a real gap caught
+     * live (not in review): `driver.status.changed.v1`'s payload used to
+     * carry only `is_available`, and approve()/unsuspend() published
+     * nothing at all, on the reasoning that neither actually changes
+     * `is_available`. That reasoning was correct as far as it went, but
+     * missed the actual point of the event from admin-api's side —
+     * admin_driver_projection.status has no *other* source, so a driver
+     * approved/suspended/unsuspended/disabled through the admin panel
+     * would update core-api's real `drivers.status` while the admin
+     * panel's own list view showed it, permanently, exactly as it had
+     * before the command ran. Now every driver-status command publishes
+     * `status` alongside `is_available` — the topic is literally named
+     * "driver status changed," so this is a more complete event, not a
+     * new one. Backward compatible: dispatch-service's own consumer
+     * (encoding/json, unknown-field-tolerant) already ignores fields it
+     * doesn't declare in its struct.
+     *
+     * `$isAvailable` defaults to the driver's own current value — approve
+     * and unsuspend never touch `is_available` themselves (a driver still
+     * has to explicitly go online via PATCH /driver/availability), so the
+     * event should report whatever that value already, genuinely is, not
+     * force it to a fixed one the way suspend/disable's own transition
+     * actually does.
+     */
+    private function publishStatusChanged(Driver $driver, string $status, ?bool $isAvailable = null): void
+    {
+        Outbox::record(
+            aggregateType: 'driver',
+            aggregateId: $driver->uuid,
+            eventType: 'driver.status.changed',
+            eventVersion: 1,
+            data: [
+                'driver_id' => $driver->uuid,
+                'is_available' => $isAvailable ?? $driver->is_available,
+                'status' => $status,
+            ],
+            regionId: $driver->region_id,
+        );
     }
 }

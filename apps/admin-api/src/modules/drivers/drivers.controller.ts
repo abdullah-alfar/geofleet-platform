@@ -22,12 +22,11 @@ import { ListDriversDto } from './dto/list-drivers.dto';
 import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
 
 /**
- * No GET /drivers/:id/timeline — there's no data source for one.
- * admin_driver_projection holds current state only (last_seen_at,
- * last_location_at); no event-history table records how a driver's
- * status/location changed over time. A real timeline needs a genuinely
- * new table (an append-only driver event log), which is out of this
- * phase's scope — see docs/admin-api/query-apis.md.
+ * No GET /drivers/:id/timeline — there's no data source for one. Driver
+ * rows hold current state only; no event-history table records how a
+ * driver's status/location changed over time. A real timeline needs a
+ * genuinely new table (an append-only driver event log), out of scope
+ * here — see docs/admin-api/query-apis.md.
  */
 @ApiTags('drivers')
 @ApiBearerAuth()
@@ -41,14 +40,18 @@ export class DriversController {
   @ApiOperation({ summary: 'List drivers, filtered and cursor-paginated.' })
   list(
     @Query() filters: ListDriversDto,
+    @Req() req: Request,
   ): Promise<PaginatedResponse<DriverRow>> {
-    return this.drivers.list(filters);
+    return this.drivers.list(filters, req.correlationId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'A single driver by driver_id.' })
-  findOne(@Param('id') id: string): Promise<DriverRow> {
-    return this.drivers.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<DriverRow> {
+    return this.drivers.findOne(id, req.correlationId);
   }
 
   @Post(':id/approve')

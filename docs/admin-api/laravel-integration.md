@@ -58,11 +58,9 @@ driver is suspended/disabled" is the actual intent of either, not
 plan: nothing anywhere in this platform ever moved a driver out of
 `pending_review` (the default status every registration creates —
 `database/migrations/2026_08_06_100020_create_drivers_table.php`) until
-this command existed. No Kafka event fires for it — same reasoning as
-`payments.refund` below: `driver.status.changed.v1`'s only real payload is
-`{driver_id, is_available}`, and approval doesn't change `is_available`
-(the driver still has to explicitly go online themselves), so there's
-nothing this event would honestly carry.
+this command existed. All four driver-status commands publish
+`driver.status.changed.v1` — see "Kafka events" below for what changed
+there and why (a real gap caught live, not designed in from the start).
 
 ## Why core-api's response is passed straight through
 
@@ -175,22 +173,40 @@ original 8-phase plan but had no writer until now.
 
 ## Kafka events: only where a topic already exists
 
-- **Approve publishes nothing.** `driver.status.changed.v1`'s only real
-  payload is `{driver_id, is_available}` (see
-  [kafka-projections.md](kafka-projections.md)) — approval changes
-  `drivers.status`, not `is_available` (the driver still has to
-  explicitly go online themselves via `PATCH /api/v1/driver/availability`
-  once approved), so there's nothing this event would honestly carry. No
-  topic exists for a general driver-status change either — same "don't
-  force data into an event that doesn't fit" reasoning as
-  `payment.refunded.v1` below.
-- **`driver.status.changed.v1`** — suspend reuses the *existing* live
-  topic (same one `PATCH /api/v1/driver/availability` already publishes
-  to), with `is_available: false`. This is why the suspended-driver's
-  effect is immediate rather than eventually-consistent-on-next-poll:
+- **`driver.status.changed.v1`** — all four driver commands
+  (approve/suspend/unsuspend/disable) publish through one shared
+  `DriverCommandController::publishStatusChanged()` helper, reusing the
+  *existing* live topic (the same one `PATCH /api/v1/driver/availability`
+  already publishes to). This wasn't the original design: approve/
+  unsuspend originally published nothing at all, on the reasoning that
+  neither actually changes `is_available` (a driver still has to
+  explicitly go online themselves) — true as far as it went, but it
+  missed that `admin_driver_projection.status` has no *other* source.
+  The result: an admin could approve or suspend a driver through the
+  panel, and the panel's own list view would show the change for
+  `suspend`/`disable` (which already fired the event, just without
+  `status`) but never, ever, for `approve`/`unsuspend` — not even
+  eventually. Caught by inspecting a real screenshot of the drivers list
+  (every row's `Status` column showed `—`, including ones just
+  approved/suspended live) and confirmed by re-reading
+  `driver-status-changed.handler.ts` — it only ever wrote
+  `availability_status`, never `status`. Fixed on both ends: the event's
+  `data` payload gained an optional `status` field, and the projection
+  handler writes it *only* when present, so a plain availability toggle
+  (which never includes `status`) can't clobber an admin-set value back
+  to `NULL`. Verified live: approved a fresh driver, confirmed `status:
+  "active"` landed in `admin_driver_projection` and in
+  `GET /api/v1/admin/drivers/{id}`'s response; then toggled that same
+  driver's own availability and confirmed `status` survived unchanged.
+  Backward compatible — dispatch-service's own consumer
+  (`encoding/json`, unknown-field-tolerant by default) already ignores
+  fields it doesn't declare in its struct, confirmed by reading its
+  `DriverStatusChanged` type before making the change. This is also why
+  a suspended/disabled driver's removal from dispatch-service's matching
+  pool is immediate rather than eventually-consistent-on-next-poll:
   dispatch-service's Redis candidate index already consumes this exact
   topic and drops the driver from matching as soon as the message lands —
-  no new consumer needed.
+  no new consumer needed, for any of the four commands.
 - **`trip.cancelled.v1`** — the topic catalog reserved this topic in
   Phase 1 but it never had a producer. Admin-forced cancellation is now
   the first live producer for it — see

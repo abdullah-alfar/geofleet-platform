@@ -66,23 +66,39 @@ export class CoreApiClientService {
     }
   }
 
-  /** Reads (e.g. listing admin accounts) go through the same
-   * shared-secret internal/v1 boundary as commands — see ADR 0010's own
-   * note that internal/v1 is "service-to-service, no end user," not
-   * specifically "mutations only." */
-  async get<T>(path: string, correlationId?: string): Promise<T> {
-    const url = new URL(path, this.baseUrl).toString();
+  /** Reads (dashboard/drivers/rides/trips/payments/admin accounts) go
+   * through the same shared-secret internal/v1 boundary as commands — see
+   * ADR 0010's own note that internal/v1 is "service-to-service, no end
+   * user," not specifically "mutations only." Every query module
+   * (drivers.service.ts etc.) calls this directly and synchronously —
+   * admin-api keeps no local read model of its own; admin traffic is
+   * low-volume enough that a plain request/response round trip per list
+   * page is simpler and more honest than eventual consistency through a
+   * Kafka-projected copy only this one caller ever read (see
+   * docs/admin-api/query-apis.md). `undefined` params are dropped rather
+   * than serialized as the literal string "undefined". */
+  async get<T>(
+    path: string,
+    params?: Record<string, string | number | undefined>,
+    correlationId?: string,
+  ): Promise<T> {
+    const url = new URL(path, this.baseUrl);
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value !== undefined) {
+        url.searchParams.set(key, String(value));
+      }
+    }
 
     try {
       const response = await firstValueFrom(
-        this.http.get<T>(url, {
+        this.http.get<T>(url.toString(), {
           timeout: this.timeoutMs,
           headers: this.headers(correlationId),
         }),
       );
       return response.data;
     } catch (error) {
-      throw this.toAdminApiException(error, url);
+      throw this.toAdminApiException(error, url.toString());
     }
   }
 

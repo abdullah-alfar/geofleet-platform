@@ -52,4 +52,12 @@ class Driver extends Model
     {
         return $this->hasMany(Trip::class);
     }
+
+    /** Used by AdminDriverResource's `active_trip_id` — the only "current
+     * state" a driver's own trips relation can answer live, no event log
+     * needed. */
+    public function activeTrip(): HasOne
+    {
+        return $this->hasOne(Trip::class)->where('status', 'in_progress');
+    }
 }

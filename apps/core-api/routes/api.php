@@ -1,9 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\Internal\V1\AdminAccountController;
+use App\Http\Controllers\Api\Internal\V1\DashboardQueryController;
 use App\Http\Controllers\Api\Internal\V1\DriverCommandController;
+use App\Http\Controllers\Api\Internal\V1\DriverQueryController;
 use App\Http\Controllers\Api\Internal\V1\PaymentCommandController;
+use App\Http\Controllers\Api\Internal\V1\PaymentQueryController;
+use App\Http\Controllers\Api\Internal\V1\RideQueryController;
 use App\Http\Controllers\Api\Internal\V1\TripCommandController;
+use App\Http\Controllers\Api\Internal\V1\TripQueryController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DriverAvailabilityController;
 use App\Http\Controllers\Api\V1\DriverDeviceController;
@@ -82,4 +87,23 @@ Route::prefix('internal/v1')->name('api.internal.v1.')->middleware('internal-ser
     Route::get('admins', [AdminAccountController::class, 'index'])->name('admins.index');
     Route::patch('admins/{admin:uuid}/role', [AdminAccountController::class, 'updateRole'])->name('admins.update-role');
     Route::patch('admins/{admin:uuid}/deactivate', [AdminAccountController::class, 'deactivate'])->name('admins.deactivate');
+
+    // --- Read side: admin-api's own query modules call these directly and
+    // synchronously instead of maintaining a Kafka-projected read model —
+    // see docs/admin-api/query-apis.md.
+    Route::get('drivers', [DriverQueryController::class, 'index'])->name('drivers.index');
+    Route::get('drivers/{driver:uuid}', [DriverQueryController::class, 'show'])->name('drivers.show');
+
+    Route::get('rides', [RideQueryController::class, 'index'])->name('rides.index');
+    Route::get('rides/{rideRequest:uuid}', [RideQueryController::class, 'show'])->name('rides.show');
+    Route::get('rides/{rideRequest:uuid}/offers', [RideQueryController::class, 'offers'])->name('rides.offers');
+
+    Route::get('trips', [TripQueryController::class, 'index'])->name('trips.index');
+    Route::get('trips/{trip:uuid}', [TripQueryController::class, 'show'])->name('trips.show');
+
+    Route::get('payments', [PaymentQueryController::class, 'index'])->name('payments.index');
+    Route::get('payments/{payment:uuid}', [PaymentQueryController::class, 'show'])->name('payments.show');
+
+    Route::get('dashboard/summary', [DashboardQueryController::class, 'summary'])->name('dashboard.summary');
+    Route::get('dashboard/regions', [DashboardQueryController::class, 'regions'])->name('dashboard.regions');
 });

@@ -61,11 +61,22 @@ concrete gaps, found by tracing the real producer code (not by reading
 the topic catalog's field-name summaries) before writing a single
 handler:
 
-- **`driver.status.changed.v1`'s entire `data` payload is
-  `{ driver_id, is_available }`.** No event in this platform carries a
-  driver's name or approval status. `admin_driver_projection.name` and
-  `.status` are permanently `NULL` until some other data source exists —
-  there currently isn't one. (Migration:
+- **`driver.status.changed.v1`'s `data` payload was originally
+  `{ driver_id, is_available }` only.** No event carried a driver's name
+  or approval status, so `admin_driver_projection.name`/`.status` were
+  permanently `NULL`. `.name` still is — no event carries it. `.status`
+  isn't anymore: a real gap caught live once admin-api's Phase 6 commands
+  (approve/suspend/unsuspend/disable) actually existed to change it —
+  those commands updated core-api's real `drivers.status` while this
+  projection (the admin panel's own data source) stayed frozen forever,
+  because nothing published it *anywhere*. Fixed by extending this
+  event's payload with an optional `status` field
+  (`DriverCommandController::publishStatusChanged`, core-api) and this
+  handler to write it — but only when present, so a plain availability
+  toggle (which never includes `status`) doesn't clobber an admin-set
+  value back to `NULL`. Verified live: approved a driver, confirmed
+  `status` landed in the projection; then toggled that same driver's own
+  availability and confirmed `status` survived unchanged. (Migration:
   `20260814100000_relax_projection_required_columns.ts`.)
 - **`ride.requested.v1` is a different Kafka topic than
   `ride.search.started.v1`/`ride.assigned.v1`/`ride.unavailable.v1`.**
