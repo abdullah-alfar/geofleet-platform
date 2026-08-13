@@ -9,6 +9,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', ability: 'dashboard.view' },
   { to: '/drivers', label: 'Drivers', ability: 'drivers.view' },
+  { to: '/customers', label: 'Customers', ability: 'customers.view' },
   { to: '/rides', label: 'Rides', ability: 'rides.view' },
   { to: '/trips', label: 'Trips', ability: 'trips.view' },
   { to: '/payments', label: 'Payments', ability: 'payments.view' },

@@ -30,6 +30,8 @@ app/
     dashboard.vue              GET /dashboard/summary + /dashboard/regions
     drivers/index.vue          GET /drivers, filtered + cursor-paginated
     drivers/[id].vue           GET /drivers/:id + approve/suspend/unsuspend/disable commands
+    customers/index.vue        GET /customers, filtered + cursor-paginated
+    customers/[id].vue         GET /customers/:id (+ total_rides/total_trips) — read-only, no commands
     rides/index.vue            GET /rides, filtered + cursor-paginated
     rides/[id].vue             GET /rides/:id (+ timeline) + GET /rides/:id/offers
     trips/index.vue            GET /trips, filtered + cursor-paginated

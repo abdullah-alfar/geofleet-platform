@@ -40,8 +40,27 @@ same data core-api itself operates on.
 | GET | `/trips/{id}` | `trips.view` | Includes a milestone `timeline` — `started`/`completed`/`cancelled` |
 | GET | `/payments` | `payments.view` | Filtered, cursor-paginated — same "empty until core-api creates payments" gap as trips |
 | GET | `/payments/{id}` | `payments.view` | |
+| GET | `/customers` | `customers.view` | Filtered, cursor-paginated |
+| GET | `/customers/{id}` | `customers.view` | Includes `total_rides`/`total_trips` (`loadCount`, detail only — not on the list, to avoid an aggregate per row of a paginated page) |
 
 Full request/response schemas: `/docs` (Swagger, non-production only).
+
+## Customers had no admin-facing read path at all before this
+
+Every other domain here (drivers/rides/trips/payments) already had at
+least a resource and a route before this. Customers had neither: no
+`CustomerController`, no route beyond the comment
+`// --- Customer-only: ride requests ---` in `routes/api.php`
+(customers as *actors* placing ride requests, not as a *manageable
+resource*). An admin could see a bare `customer_id` UUID embedded in a
+ride/trip/payment row and nothing else. `CustomerQueryController`
+(core-api) and the `customers` module (admin-api) close that gap the
+same way every other domain here works — `AdminCustomerResource` reads
+`customers` joined to `users` (name/email/phone_masked/status/region_id
+live on `users`, not `customers` — a customer's own table only ever held
+`rating`). `phone_masked` uses a small shared helper
+(`App\Support\PhoneMask`) now, factored out of `AdminDriverResource`
+rather than duplicated a second time.
 
 ## Cursor pagination
 

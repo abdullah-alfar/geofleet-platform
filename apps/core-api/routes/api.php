@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Internal\V1\AdminAccountController;
+use App\Http\Controllers\Api\Internal\V1\CustomerQueryController;
 use App\Http\Controllers\Api\Internal\V1\DashboardQueryController;
 use App\Http\Controllers\Api\Internal\V1\DriverCommandController;
 use App\Http\Controllers\Api\Internal\V1\DriverQueryController;
@@ -103,6 +104,9 @@ Route::prefix('internal/v1')->name('api.internal.v1.')->middleware('internal-ser
 
     Route::get('payments', [PaymentQueryController::class, 'index'])->name('payments.index');
     Route::get('payments/{payment:uuid}', [PaymentQueryController::class, 'show'])->name('payments.show');
+
+    Route::get('customers', [CustomerQueryController::class, 'index'])->name('customers.index');
+    Route::get('customers/{customer:uuid}', [CustomerQueryController::class, 'show'])->name('customers.show');
 
     Route::get('dashboard/summary', [DashboardQueryController::class, 'summary'])->name('dashboard.summary');
     Route::get('dashboard/regions', [DashboardQueryController::class, 'regions'])->name('dashboard.regions');

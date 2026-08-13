@@ -16,10 +16,10 @@ core-api, which already works today, not a change to this scheme).
 | `admin_role` | Abilities |
 |---|---|
 | `super_admin` | `*` (Sanctum's own wildcard) |
-| `operations_admin` | `dashboard.view`, `drivers.view`, `drivers.approve`, `drivers.suspend`, `drivers.unsuspend`, `drivers.disable`, `trips.view`, `trips.cancel`, `rides.view`, `operations.manage` |
-| `support_admin` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `audit.view` |
+| `operations_admin` | `dashboard.view`, `drivers.view`, `drivers.approve`, `drivers.suspend`, `drivers.unsuspend`, `drivers.disable`, `trips.view`, `trips.cancel`, `rides.view`, `customers.view`, `operations.manage` |
+| `support_admin` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `customers.view`, `audit.view` |
 | `finance_admin` | `dashboard.view`, `payments.view`, `payments.refund`, `audit.view` |
-| `viewer` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `payments.view`, `audit.view` (read-only, no `.suspend`/`.cancel`/`.refund`/`.manage`) |
+| `viewer` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `payments.view`, `customers.view`, `audit.view` (read-only, no `.suspend`/`.cancel`/`.refund`/`.manage`) |
 
 Source of truth: `apps/core-api/app/Support/AdminPermissions.php`. Not
 duplicated in admin-api — the token's `abilities` array, read once at

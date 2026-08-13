@@ -14,6 +14,7 @@ import { PostgresModule } from './integrations/postgres/postgres.module';
 import { RedisModule } from './integrations/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { CustomersModule } from './modules/customers/customers.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DriversModule } from './modules/drivers/drivers.module';
 import { RidesModule } from './modules/rides/rides.module';
@@ -78,6 +79,7 @@ import { AdminsModule } from './modules/admins/admins.module';
     RidesModule,
     TripsModule,
     PaymentsModule,
+    CustomersModule,
     RealtimeModule,
     AdminsModule,
   ],

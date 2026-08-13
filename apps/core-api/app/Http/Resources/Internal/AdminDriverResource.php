@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Internal;
 
 use App\Models\Driver;
+use App\Support\PhoneMask;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,7 +26,7 @@ class AdminDriverResource extends JsonResource
         return [
             'driver_id' => $this->uuid,
             'name' => $this->whenLoaded('user', fn () => $this->user->name),
-            'phone_masked' => $this->whenLoaded('user', fn () => self::maskPhone($this->user->phone)),
+            'phone_masked' => $this->whenLoaded('user', fn () => PhoneMask::apply($this->user->phone)),
             'status' => $this->status,
             'availability_status' => $this->is_available ? 'available' : 'unavailable',
             'vehicle_type' => $this->whenLoaded('activeVehicle', fn () => $this->activeVehicle?->vehicle_type),
@@ -35,16 +36,5 @@ class AdminDriverResource extends JsonResource
             'last_available_at' => $this->last_available_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];
-    }
-
-    private static function maskPhone(?string $phone): ?string
-    {
-        if ($phone === null) {
-            return null;
-        }
-
-        $visible = substr($phone, -4);
-
-        return str_repeat('*', max(strlen($phone) - 4, 0)).$visible;
     }
 }

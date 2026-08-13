@@ -60,6 +60,7 @@ src/
     rides/                       GET /rides, /rides/:id (+ timeline), /rides/:id/offers (+ is_expired)
     trips/                       GET /trips, /trips/:id (+ timeline), POST /trips/:id/cancel
     payments/                    GET /payments, /payments/:id, POST /payments/:id/refund
+    customers/                   GET /customers, /customers/:id (+ total_rides/total_trips) — read-only, no command endpoints
     realtime/                    GET /realtime/regions/:id/{drivers,counters}, /realtime/incidents — the only Redis-backed reads beyond health checks
     admins/                      GET /admins, PATCH /admins/:id/{role,deactivate} — admin account management, super_admin-only
 ```

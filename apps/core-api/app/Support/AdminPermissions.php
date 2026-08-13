@@ -36,6 +36,7 @@ class AdminPermissions
             'trips.view',
             'trips.cancel',
             'rides.view',
+            'customers.view',
             'operations.manage',
         ],
 
@@ -44,6 +45,7 @@ class AdminPermissions
             'drivers.view',
             'trips.view',
             'rides.view',
+            'customers.view',
             'audit.view',
         ],
 
@@ -62,6 +64,7 @@ class AdminPermissions
             'trips.view',
             'rides.view',
             'payments.view',
+            'customers.view',
             'audit.view',
         ],
     ];
