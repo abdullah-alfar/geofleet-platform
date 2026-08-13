@@ -18,6 +18,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd apps/admin-web && npm run dev"],
       "port": 3000
+    },
+    {
+      "name": "landing-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/landing-web && npm run dev"],
+      "port": 3002
     }
   ]
 }
