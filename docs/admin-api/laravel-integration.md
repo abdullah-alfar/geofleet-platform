@@ -30,14 +30,25 @@ Admin Web
   -> { data: {...} }   [admin-api's response envelope]
 ```
 
-Three commands exist today, one per the abilities `AdminPermissions`
+Four commands exist today, one per the abilities `AdminPermissions`
 already defines (`docs/admin-api/permissions.md`):
 
 | admin-api route | permission | core-api route | Effect |
 |---|---|---|---|
+| `POST /drivers/:id/approve` | `drivers.approve` | `PATCH /internal/v1/drivers/{id}/approve` | `drivers.status = 'active'` (only from `pending_review`) |
 | `POST /drivers/:id/suspend` | `drivers.suspend` | `PATCH /internal/v1/drivers/{id}/suspend` | `drivers.status = 'suspended'`, `is_available = false` |
 | `POST /trips/:id/cancel` | `trips.cancel` | `PATCH /internal/v1/trips/{id}/cancel` | `trips.status = 'cancelled'` (only from `in_progress`) |
 | `POST /payments/:id/refund` | `payments.refund` | `PATCH /internal/v1/payments/{id}/refund` | `payments.status = 'refunded'` (only from `completed`) |
+
+`drivers.approve` closes a gap that existed since the original 8-phase
+plan: nothing anywhere in this platform ever moved a driver out of
+`pending_review` (the default status every registration creates —
+`database/migrations/2026_08_06_100020_create_drivers_table.php`) until
+this command existed. No Kafka event fires for it — same reasoning as
+`payments.refund` below: `driver.status.changed.v1`'s only real payload is
+`{driver_id, is_available}`, and approval doesn't change `is_available`
+(the driver still has to explicitly go online themselves), so there's
+nothing this event would honestly carry.
 
 ## Why core-api's response is passed straight through
 
@@ -69,14 +80,18 @@ pass through in that case.
   returns `200` with the current (unchanged) state, not an error — the
   desired end-state is already true. No duplicate audit row or Kafka
   event fires for the no-op case.
-- **Cancel** and **refund** are not idempotent in the same way — each only
-  succeeds from one specific starting status (`in_progress` /
-  `completed`); a repeat call gets `409 conflict`, since "cancel a trip
-  that's already cancelled" and "refund a payment that's already
+- **Approve**, **cancel**, and **refund** are not idempotent in the same
+  way — each only succeeds from one specific starting status
+  (`pending_review` / `in_progress` / `completed`); a repeat call gets
+  `409 conflict`, since "approve a driver who's already active," "cancel
+  a trip that's already cancelled," and "refund a payment that's already
   refunded" are meaningfully different requests, not safe retries of the
-  same one.
+  same one. Approve is deliberately strict rather than idempotent like
+  suspend: re-approving an already-active driver isn't a meaningful
+  "ensure approved" no-op — it's a caller/UI error (e.g. a double-click)
+  that should surface, not be silently absorbed.
 
-All three commands use the same conditional-atomic-UPDATE pattern already
+All four commands use the same conditional-atomic-UPDATE pattern already
 established by `RideRequestController::cancel` and dispatch-service's
 offer-acceptance transaction (see AGENTS.md) — `UPDATE ... WHERE status =
 X`, check the affected-row count, never a read-then-write race.
@@ -94,6 +109,15 @@ original 8-phase plan but had no writer until now.
 
 ## Kafka events: only where a topic already exists
 
+- **Approve publishes nothing.** `driver.status.changed.v1`'s only real
+  payload is `{driver_id, is_available}` (see
+  [kafka-projections.md](kafka-projections.md)) — approval changes
+  `drivers.status`, not `is_available` (the driver still has to
+  explicitly go online themselves via `PATCH /api/v1/driver/availability`
+  once approved), so there's nothing this event would honestly carry. No
+  topic exists for a general driver-status change either — same "don't
+  force data into an event that doesn't fit" reasoning as
+  `payment.refunded.v1` below.
 - **`driver.status.changed.v1`** — suspend reuses the *existing* live
   topic (same one `PATCH /api/v1/driver/availability` already publishes
   to), with `is_available: false`. This is why the suspended-driver's

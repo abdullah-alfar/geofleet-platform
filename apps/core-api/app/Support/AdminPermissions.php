@@ -29,7 +29,10 @@ class AdminPermissions
         'operations_admin' => [
             'dashboard.view',
             'drivers.view',
+            'drivers.approve',
             'drivers.suspend',
+            'drivers.unsuspend',
+            'drivers.disable',
             'trips.view',
             'trips.cancel',
             'rides.view',

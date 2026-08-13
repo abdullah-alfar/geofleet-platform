@@ -38,6 +38,18 @@ async function onSuspend(reason: string) {
     await refresh();
   }
 }
+
+async function onApprove(reason: string) {
+  successMessage.value = null;
+  const result = await command.run<DriverCommandResult>(
+    `/api/v1/admin/drivers/${driverId}/approve`,
+    reason || undefined,
+  );
+  if (result) {
+    successMessage.value = `Driver approved (core-api status: ${result.status}). The list view may take a moment to reflect it — it's rebuilt from Kafka events, not read live from core-api.`;
+    await refresh();
+  }
+}
 </script>
 
 <template>
@@ -57,13 +69,21 @@ async function onSuspend(reason: string) {
           {{ driver.name ?? driver.driver_id }}
         </h1>
 
-        <CommandButton
-          v-if="auth.hasAbility('drivers.suspend') && driver.status !== 'suspended'"
-          label="Suspend driver"
-          variant="danger"
-          :pending="command.pending.value"
-          @confirm="onSuspend"
-        />
+        <div class="flex gap-2">
+          <CommandButton
+            v-if="auth.hasAbility('drivers.approve') && driver.status === 'pending_review'"
+            label="Approve driver"
+            :pending="command.pending.value"
+            @confirm="onApprove"
+          />
+          <CommandButton
+            v-if="auth.hasAbility('drivers.suspend') && driver.status !== 'suspended'"
+            label="Suspend driver"
+            variant="danger"
+            :pending="command.pending.value"
+            @confirm="onSuspend"
+          />
+        </div>
       </div>
 
       <p v-if="command.error.value" class="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">

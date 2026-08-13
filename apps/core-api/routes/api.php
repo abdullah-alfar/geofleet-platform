@@ -71,7 +71,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 // docs/admin-api/laravel-integration.md. Gated by a shared secret, not
 // `auth:sanctum` — there is no end-user session on this boundary.
 Route::prefix('internal/v1')->name('api.internal.v1.')->middleware('internal-service')->group(function () {
+    Route::patch('drivers/{driver:uuid}/approve', [DriverCommandController::class, 'approve'])->name('drivers.approve');
     Route::patch('drivers/{driver:uuid}/suspend', [DriverCommandController::class, 'suspend'])->name('drivers.suspend');
+    Route::patch('drivers/{driver:uuid}/unsuspend', [DriverCommandController::class, 'unsuspend'])->name('drivers.unsuspend');
+    Route::patch('drivers/{driver:uuid}/disable', [DriverCommandController::class, 'disable'])->name('drivers.disable');
     Route::patch('trips/{trip:uuid}/cancel', [TripCommandController::class, 'cancel'])->name('trips.cancel');
     Route::patch('payments/{payment:uuid}/refund', [PaymentCommandController::class, 'refund'])->name('payments.refund');
 });

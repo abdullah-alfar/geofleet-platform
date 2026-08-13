@@ -51,6 +51,22 @@ export class DriversController {
     return this.drivers.findOne(id);
   }
 
+  @Post(':id/approve')
+  @HttpCode(200)
+  @RequirePermissions('drivers.approve')
+  @ApiOperation({
+    summary:
+      'Approve a driver out of pending_review — forwarded to core-api, not a local write.',
+  })
+  approve(
+    @Param('id') id: string,
+    @Body() dto: CommandReasonDto,
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.drivers.approve(id, admin, dto.reason, req.correlationId);
+  }
+
   @Post(':id/suspend')
   @HttpCode(200)
   @RequirePermissions('drivers.suspend')

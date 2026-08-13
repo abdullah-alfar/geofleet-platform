@@ -61,7 +61,15 @@ refresh();
               {{ driver.name ?? driver.driver_id.slice(0, 8) }}
             </NuxtLink>
           </td>
-          <td class="py-2">{{ driver.status ?? '—' }}</td>
+          <td class="py-2">
+            {{ driver.status ?? '—' }}
+            <span
+              v-if="driver.status === 'pending_review'"
+              class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700"
+            >
+              needs approval
+            </span>
+          </td>
           <td class="py-2">{{ driver.availability_status ?? '—' }}</td>
           <td class="py-2">{{ driver.vehicle_type ?? '—' }}</td>
           <td class="py-2">{{ driver.region_id ?? '—' }}</td>

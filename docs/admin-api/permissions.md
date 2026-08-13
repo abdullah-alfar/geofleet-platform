@@ -16,7 +16,7 @@ core-api, which already works today, not a change to this scheme).
 | `admin_role` | Abilities |
 |---|---|
 | `super_admin` | `*` (Sanctum's own wildcard) |
-| `operations_admin` | `dashboard.view`, `drivers.view`, `drivers.suspend`, `trips.view`, `trips.cancel`, `rides.view`, `operations.manage` |
+| `operations_admin` | `dashboard.view`, `drivers.view`, `drivers.approve`, `drivers.suspend`, `trips.view`, `trips.cancel`, `rides.view`, `operations.manage` |
 | `support_admin` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `audit.view` |
 | `finance_admin` | `dashboard.view`, `payments.view`, `payments.refund`, `audit.view` |
 | `viewer` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `payments.view`, `audit.view` (read-only, no `.suspend`/`.cancel`/`.refund`/`.manage`) |

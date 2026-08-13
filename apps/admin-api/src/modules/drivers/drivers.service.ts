@@ -148,4 +148,22 @@ export class DriversService {
       correlationId,
     );
   }
+
+  /**
+   * Forwards to core-api's internal/v1/drivers/{id}/approve — the only
+   * path in the platform that moves a driver out of `pending_review`.
+   * See docs/admin-api/laravel-integration.md.
+   */
+  async approve(
+    driverId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    return this.coreApi.patch(
+      `/api/internal/v1/drivers/${driverId}/approve`,
+      { admin_user_id: admin.userId, reason },
+      correlationId,
+    );
+  }
 }
