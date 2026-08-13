@@ -41,11 +41,11 @@ onMounted(() => {
   const count = props.dense ? cells.length : Math.round(cells.length * 0.45);
   const geometry = new THREE.BoxGeometry(1, 1, 1);
   const material = new THREE.MeshStandardMaterial({
-    color: '#16213a',
-    roughness: 0.6,
-    metalness: 0.2,
+    color: '#16213f',
+    roughness: 0.55,
+    metalness: 0.25,
     emissive: '#0d1730',
-    emissiveIntensity: 0.6,
+    emissiveIntensity: 0.4,
   });
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   const dummy = new THREE.Object3D();
@@ -64,8 +64,9 @@ onMounted(() => {
     dummy.updateMatrix();
     mesh.setMatrixAt(i, dummy.matrix);
 
-    const warmWindow = Math.random() < 0.12;
-    color.set(warmWindow ? '#3a2a1a' : '#16213a').lerp(new THREE.Color('#233355'), Math.random() * 0.5);
+    const warmWindow = Math.random() < 0.1;
+    const base = warmWindow ? '#43301c' : '#111c38';
+    color.set(base).lerp(new THREE.Color('#2e4d8a'), Math.random() * 0.75);
     mesh.setColorAt(i, color);
   }
   mesh.instanceMatrix.needsUpdate = true;
@@ -125,8 +126,8 @@ const routePoints: RoutePoint[] = [pickup, waypoint, destination];
 // -- Camera parallax -------------------------------------------------------
 const cameraRef = ref();
 const pointer = { x: 0, y: 0 };
-const BASE_POS = new THREE.Vector3(2, 12, 15);
-const LOOK_AT = new THREE.Vector3(0, 0, -1);
+const BASE_POS = new THREE.Vector3(6, 22, 24);
+const LOOK_AT = new THREE.Vector3(-4, 0, -4);
 
 function onPointerMove(e: PointerEvent) {
   pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -153,10 +154,10 @@ onBeforeRender(({ elapsed }) => {
 <template>
   <TresPerspectiveCamera ref="cameraRef" :position="[BASE_POS.x, BASE_POS.y, BASE_POS.z]" :fov="42" />
 
-  <TresFogExp2 :args="['#0b0f19', 0.032]" />
-  <TresHemisphereLight :args="['#3a5a9c', '#050810', 0.65]" />
-  <TresDirectionalLight :position="[8, 14, 6]" color="#f5a962" :intensity="0.35" />
-  <TresAmbientLight color="#1b2a4a" :intensity="0.4" />
+  <TresFogExp2 :args="['#0b0f19', 0.02]" />
+  <TresHemisphereLight :args="['#5b82c9', '#080c16', 0.9]" />
+  <TresDirectionalLight :position="[8, 14, 6]" color="#f5a962" :intensity="0.45" />
+  <TresAmbientLight color="#2b3f6a" :intensity="0.5" />
 
   <primitive :object="gridHelper" />
   <primitive v-if="buildingsMesh" :object="buildingsMesh" />

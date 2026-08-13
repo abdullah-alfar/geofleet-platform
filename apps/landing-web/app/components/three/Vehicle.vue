@@ -88,17 +88,17 @@ onBeforeRender(({ delta }) => {
 <template>
   <TresGroup ref="groupRef">
     <TresMesh :position="[0, 0, 0]" cast-shadow>
-      <TresBoxGeometry :args="[0.42, 0.18, 0.22]" />
-      <TresMeshStandardMaterial :color="bodyColor" :emissive="bodyColor" :emissive-intensity="selected ? 0.9 : 0.35" :roughness="0.35" :metalness="0.4" />
+      <TresBoxGeometry :args="[0.62, 0.26, 0.32]" />
+      <TresMeshStandardMaterial :color="bodyColor" :emissive="bodyColor" :emissive-intensity="selected ? 1.4 : 0.7" :roughness="0.35" :metalness="0.4" />
     </TresMesh>
-    <TresMesh :position="[0, 0.13, 0]">
-      <TresBoxGeometry :args="[0.22, 0.1, 0.18]" />
+    <TresMesh :position="[0, 0.19, 0]">
+      <TresBoxGeometry :args="[0.32, 0.14, 0.26]" />
       <TresMeshStandardMaterial color="#0b0f19" :roughness="0.2" />
     </TresMesh>
 
     <TresMesh ref="pulseRef" :position="[0, -0.12, 0]" :rotation="[-Math.PI / 2, 0, 0]">
-      <TresRingGeometry :args="[0.28, 0.34, 32]" />
-      <TresMeshBasicMaterial :color="bodyColor" :transparent="true" :opacity="0.5" :side="THREE.DoubleSide" />
+      <TresRingGeometry :args="[0.4, 0.48, 32]" />
+      <TresMeshBasicMaterial :color="bodyColor" :transparent="true" :opacity="0.6" :side="THREE.DoubleSide" />
     </TresMesh>
   </TresGroup>
 </template>
