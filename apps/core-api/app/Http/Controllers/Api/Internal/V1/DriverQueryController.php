@@ -79,8 +79,15 @@ class DriverQueryController extends Controller
         ];
     }
 
-    public function show(Driver $driver): AdminDriverResource
+    /**
+     * Returns the resolved array, not the Resource object — a bare
+     * `new AdminDriverResource(...)` return gets auto-wrapped in
+     * `{"data": {...}}` by Laravel's JsonResource default (every
+     * single-resource response does; ->resolve() opts out). admin-api's
+     * DriversService.findOne() expects the flat shape.
+     */
+    public function show(Driver $driver): array
     {
-        return new AdminDriverResource($driver->load(['user', 'activeVehicle', 'activeTrip']));
+        return (new AdminDriverResource($driver->load(['user', 'activeVehicle', 'activeTrip'])))->resolve();
     }
 }

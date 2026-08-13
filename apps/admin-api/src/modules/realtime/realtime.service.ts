@@ -1,8 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { Kysely, Selectable } from 'kysely';
+import { Injectable } from '@nestjs/common';
 import type { Redis } from 'ioredis';
-import { KYSELY_DB } from '../../database/database.module';
-import { Database } from '../../database/schema';
+import { Inject } from '@nestjs/common';
+import { CoreApiClientService } from '../../integrations/core-api/core-api-client.service';
+import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
 import { REDIS_CLIENT } from '../../integrations/redis/redis.module';
 
 /** An admin map isn't meant to render thousands of pins in one screen,
@@ -45,15 +45,13 @@ interface DispatchDriverState {
 /**
  * A `dispatch:driver:{id}` key existing is not the same as it being
  * trustworthy: caught live — a driver deleted from Postgres after being
- * suspended (Phase 6) left a key behind with `lat: 0, lng: 0` and a
- * Go zero-time `updated_at` (from `SetAvailability` being called with no
- * prior location ever cached for that driver), which would otherwise
- * have rendered a phantom pin at 0,0 ("null island") until its 30-minute
- * TTL happened to expire. Reusing STALE_LOCATION_AGE_MS here — the same
- * definition of "trustworthy" dispatch-service itself applies to a
- * candidate's cached position during matching — means presence and
- * freshness are checked together everywhere this state is used, not just
- * in the incident feed.
+ * suspended left a key behind with `lat: 0, lng: 0` and a Go zero-time
+ * `updated_at`, which would otherwise have rendered a phantom pin at 0,0
+ * ("null island") until its 30-minute TTL happened to expire. Reusing
+ * STALE_LOCATION_AGE_MS here — the same definition of "trustworthy"
+ * dispatch-service itself applies to a candidate's cached position
+ * during matching — means presence and freshness are checked together
+ * everywhere this state is used, not just in the incident feed.
  */
 function isFresh(state: DispatchDriverState): boolean {
   return (
@@ -103,40 +101,57 @@ export interface SilentDriverOnTripIncident {
 
 export type Incident = StaleSearchingRideIncident | SilentDriverOnTripIncident;
 
-type DriverMapRow = Pick<
-  Selectable<Database['admin_driver_projection']>,
-  'driver_id' | 'name' | 'vehicle_type'
->;
+interface DriverMapRow {
+  driver_id: string;
+  name: string | null;
+  vehicle_type: string | null;
+}
+
+interface StaleRideRow {
+  ride_request_id: string;
+  region_id: string | null;
+  requested_at: string | null;
+}
+
+interface InProgressTripRow {
+  trip_id: string;
+  driver_id: string | null;
+  region_id: string | null;
+  started_at: string | null;
+}
 
 /**
  * The only module in admin-api that reads Redis for anything other than
  * a health-check ping — see docs/admin-api/realtime-operations.md.
- * Deliberately does not touch dispatch-service's `dispatch:geocell:*`
- * geohash sets: region scoping comes from Postgres
- * (`admin_driver_projection.region_id`, already indexed, a real business
- * concept), then only the already-known driver ids are looked up in
- * Redis for live position. Re-implementing geohash neighbor search in a
- * second language, in a second service, to solve a problem
- * dispatch-service already solves for its own purpose would be pure
- * duplication.
+ * Region scoping and ride/trip incident detection call core-api's
+ * internal/v1 read endpoints directly (no local Kafka-projected read
+ * model anymore — see docs/admin-api/query-apis.md); only the live
+ * position/availability data comes from dispatch-service's own Redis
+ * index, which has no core-api equivalent (core-api's own tables don't
+ * track a driver's current GPS position). Deliberately does not touch
+ * dispatch-service's `dispatch:geocell:*` geohash sets: region scoping
+ * comes from core-api's own `region_id` column, then only the
+ * already-known driver ids are looked up in Redis for live position.
+ * Re-implementing geohash neighbor search in a second language, in a
+ * second service, to solve a problem dispatch-service already solves
+ * for its own purpose would be pure duplication.
  */
 @Injectable()
 export class RealtimeService {
   constructor(
-    @Inject(KYSELY_DB) private readonly db: Kysely<Database>,
+    private readonly coreApi: CoreApiClientService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   async getRegionDriverMap(regionId: string): Promise<RegionDriverMap> {
-    const rows = await this.db
-      .selectFrom('admin_driver_projection')
-      .select(['driver_id', 'name', 'vehicle_type'])
-      .where('region_id', '=', regionId)
-      .limit(MAX_MAP_DRIVERS + 1)
-      .execute();
+    const response = await this.coreApi.get<PaginatedResponse<DriverMapRow>>(
+      '/api/internal/v1/drivers',
+      { region_id: regionId, limit: MAX_MAP_DRIVERS + 1 },
+    );
+    const rows = response.data;
 
     const truncated = rows.length > MAX_MAP_DRIVERS;
-    const page: DriverMapRow[] = rows.slice(0, MAX_MAP_DRIVERS);
+    const page = rows.slice(0, MAX_MAP_DRIVERS);
     const states = await this.fetchDispatchStates(
       page.map((row) => row.driver_id),
     );
@@ -165,15 +180,13 @@ export class RealtimeService {
   }
 
   async getRegionLiveCounters(regionId: string): Promise<RegionLiveCounters> {
-    const rows = await this.db
-      .selectFrom('admin_driver_projection')
-      .select('driver_id')
-      .where('region_id', '=', regionId)
-      .limit(MAX_MAP_DRIVERS)
-      .execute();
+    const response = await this.coreApi.get<PaginatedResponse<DriverMapRow>>(
+      '/api/internal/v1/drivers',
+      { region_id: regionId, limit: MAX_MAP_DRIVERS },
+    );
 
     const states = await this.fetchDispatchStates(
-      rows.map((row) => row.driver_id),
+      response.data.map((row) => row.driver_id),
     );
 
     let onlineCount = 0;
@@ -226,50 +239,55 @@ export class RealtimeService {
   }
 
   private async staleSearchingRides(): Promise<StaleSearchingRideIncident[]> {
-    const threshold = new Date(Date.now() - STALE_SEARCHING_THRESHOLD_MS);
+    const threshold = new Date(
+      Date.now() - STALE_SEARCHING_THRESHOLD_MS,
+    ).toISOString();
 
-    // Caught live: this platform's earlier load-testing phases left
-    // dozens of ride requests genuinely stuck in `searching` for hours
-    // (no driver ever available at the time, and nothing ever swept them
-    // to `unavailable`) — an unbounded query here would return all of
-    // them. Oldest-first + a hard cap, same "don't return an unbounded
-    // list" discipline as MAX_MAP_DRIVERS above: the cap keeps the worst
-    // offenders, not an arbitrary slice.
-    const rows = await this.db
-      .selectFrom('admin_ride_projection')
-      .select(['ride_request_id', 'region_id', 'search_started_at'])
-      .where('status', '=', 'searching')
-      .where('search_started_at', 'is not', null)
-      .where('search_started_at', '<=', threshold)
-      .orderBy('search_started_at', 'asc')
-      .limit(MAX_INCIDENTS_PER_TYPE)
-      .execute();
+    // Caught live: earlier load-testing phases left dozens of ride
+    // requests genuinely stuck in `searching` for hours (no driver ever
+    // available at the time, and nothing ever swept them to
+    // `unavailable`) — an unbounded query here would return all of them.
+    // `order=oldest` + a hard cap on core-api's own side: the cap keeps
+    // the worst offenders, not an arbitrary slice.
+    const response = await this.coreApi.get<PaginatedResponse<StaleRideRow>>(
+      '/api/internal/v1/rides',
+      {
+        status: 'searching',
+        date_to: threshold,
+        order: 'oldest',
+        limit: MAX_INCIDENTS_PER_TYPE,
+      },
+    );
 
-    return rows
+    return response.data
       .filter(
-        (row): row is typeof row & { search_started_at: Date } =>
-          row.search_started_at !== null,
+        (row): row is StaleRideRow & { requested_at: string } =>
+          row.requested_at !== null,
       )
       .map((row) => ({
         type: 'stale_searching_ride' as const,
         ride_request_id: row.ride_request_id,
         region_id: row.region_id,
-        search_started_at: row.search_started_at.toISOString(),
-        waiting_ms: Date.now() - row.search_started_at.getTime(),
+        search_started_at: row.requested_at,
+        waiting_ms: Date.now() - new Date(row.requested_at).getTime(),
       }));
   }
 
   private async silentDriversOnActiveTrips(): Promise<
     SilentDriverOnTripIncident[]
   > {
-    const rows = await this.db
-      .selectFrom('admin_trip_projection')
-      .select(['trip_id', 'driver_id', 'region_id', 'started_at'])
-      .where('status', '=', 'in_progress')
-      .orderBy('started_at', 'asc')
-      .limit(MAX_INCIDENTS_PER_TYPE)
-      .execute();
+    const response = await this.coreApi.get<
+      PaginatedResponse<InProgressTripRow>
+    >('/api/internal/v1/trips', {
+      status: 'in_progress',
+      order: 'oldest',
+      limit: MAX_INCIDENTS_PER_TYPE,
+    });
 
+    const rows = response.data.filter(
+      (row): row is InProgressTripRow & { driver_id: string } =>
+        row.driver_id !== null,
+    );
     if (rows.length === 0) {
       return [];
     }
@@ -289,7 +307,7 @@ export class RealtimeService {
           trip_id: row.trip_id,
           driver_id: row.driver_id,
           region_id: row.region_id,
-          started_at: row.started_at?.toISOString() ?? null,
+          started_at: row.started_at,
         });
       }
     }

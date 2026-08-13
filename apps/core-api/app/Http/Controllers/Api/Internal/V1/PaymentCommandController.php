@@ -24,7 +24,10 @@ class PaymentCommandController extends Controller
      * audit trail (`audit_logs`, Postgres-only) still captures the refund
      * regardless of Kafka.
      */
-    public function refund(RefundPaymentRequest $request, Payment $payment): PaymentResource
+    /** ->resolve(), not a bare Resource return — a bare Resource gets
+     * auto-wrapped in `{"data": {...}}` by Laravel's JsonResource default;
+     * admin-api forwards this response flat to admin-web. */
+    public function refund(RefundPaymentRequest $request, Payment $payment): array
     {
         $payment->loadMissing('trip');
 
@@ -47,6 +50,6 @@ class PaymentCommandController extends Controller
             );
         });
 
-        return new PaymentResource($payment->fresh());
+        return (new PaymentResource($payment->fresh()))->resolve();
     }
 }

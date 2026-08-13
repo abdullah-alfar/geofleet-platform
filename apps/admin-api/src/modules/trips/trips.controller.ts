@@ -37,14 +37,17 @@ export class TripsController {
 
   @Get()
   @ApiOperation({ summary: 'List trips, filtered and cursor-paginated.' })
-  list(@Query() filters: ListTripsDto): Promise<PaginatedResponse<TripRow>> {
-    return this.trips.list(filters);
+  list(
+    @Query() filters: ListTripsDto,
+    @Req() req: Request,
+  ): Promise<PaginatedResponse<TripRow>> {
+    return this.trips.list(filters, req.correlationId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'A single trip, with its milestone timeline.' })
-  findOne(@Param('id') id: string): Promise<TripDetail> {
-    return this.trips.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: Request): Promise<TripDetail> {
+    return this.trips.findOne(id, req.correlationId);
   }
 
   @Post(':id/cancel')

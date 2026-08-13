@@ -24,7 +24,10 @@ class TripCommandController extends Controller
      * future consumer can rely on this event existing retroactively for
      * every admin cancellation from this point on.
      */
-    public function cancel(CancelTripRequest $request, Trip $trip): TripResource
+    /** ->resolve(), not a bare Resource return — a bare Resource gets
+     * auto-wrapped in `{"data": {...}}` by Laravel's JsonResource default;
+     * admin-api forwards this response flat to admin-web. */
+    public function cancel(CancelTripRequest $request, Trip $trip): array
     {
         DB::transaction(function () use ($request, $trip): void {
             $reason = $request->validated('reason') ?? 'cancelled_by_admin';
@@ -63,6 +66,6 @@ class TripCommandController extends Controller
             );
         });
 
-        return new TripResource($trip->fresh());
+        return (new TripResource($trip->fresh()))->resolve();
     }
 }

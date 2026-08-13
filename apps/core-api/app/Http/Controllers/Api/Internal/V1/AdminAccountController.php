@@ -43,7 +43,10 @@ class AdminAccountController extends Controller
      * fat-fingering their own row in a list UI and locking themselves out
      * of `admins.manage` entirely with no one else around to fix it.
      */
-    public function updateRole(UpdateAdminRoleRequest $request, Admin $admin): AdminAccountResource
+    /** ->resolve(), not a bare Resource return — a bare Resource gets
+     * auto-wrapped in `{"data": {...}}` by Laravel's JsonResource default;
+     * admin-api forwards this response flat to admin-web. */
+    public function updateRole(UpdateAdminRoleRequest $request, Admin $admin): array
     {
         $actor = $request->admin();
 
@@ -70,7 +73,7 @@ class AdminAccountController extends Controller
             );
         });
 
-        return new AdminAccountResource($admin->fresh('user'));
+        return (new AdminAccountResource($admin->fresh('user')))->resolve();
     }
 
     /**
@@ -84,7 +87,8 @@ class AdminAccountController extends Controller
      * Same self-protection as updateRole() — can't deactivate your own
      * account through this endpoint.
      */
-    public function deactivate(DeactivateAdminAccountRequest $request, Admin $admin): AdminAccountResource
+    /** ->resolve(), not a bare Resource return — see updateRole()'s note. */
+    public function deactivate(DeactivateAdminAccountRequest $request, Admin $admin): array
     {
         $actor = $request->admin();
 
@@ -108,6 +112,6 @@ class AdminAccountController extends Controller
             );
         });
 
-        return new AdminAccountResource($admin->fresh('user'));
+        return (new AdminAccountResource($admin->fresh('user')))->resolve();
     }
 }

@@ -1,5 +1,6 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -19,13 +20,13 @@ export class DashboardController {
 
   @Get('summary')
   @ApiOperation({ summary: "Platform-wide live counts and today's totals." })
-  summary(): Promise<DashboardSummary> {
-    return this.dashboard.getSummary();
+  summary(@Req() req: Request): Promise<DashboardSummary> {
+    return this.dashboard.getSummary(req.correlationId);
   }
 
   @Get('regions')
   @ApiOperation({ summary: 'Live counts broken down by region_id.' })
-  regions(): Promise<RegionMetrics[]> {
-    return this.dashboard.getRegions();
+  regions(@Req() req: Request): Promise<RegionMetrics[]> {
+    return this.dashboard.getRegions(req.correlationId);
   }
 }

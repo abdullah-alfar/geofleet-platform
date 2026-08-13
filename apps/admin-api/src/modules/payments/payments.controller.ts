@@ -33,14 +33,18 @@ export class PaymentsController {
   @ApiOperation({ summary: 'List payments, filtered and cursor-paginated.' })
   list(
     @Query() filters: ListPaymentsDto,
+    @Req() req: Request,
   ): Promise<PaginatedResponse<PaymentRow>> {
-    return this.payments.list(filters);
+    return this.payments.list(filters, req.correlationId);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'A single payment by payment_id.' })
-  findOne(@Param('id') id: string): Promise<PaymentRow> {
-    return this.payments.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<PaymentRow> {
+    return this.payments.findOne(id, req.correlationId);
   }
 
   @Post(':id/refund')

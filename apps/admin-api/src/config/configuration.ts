@@ -9,10 +9,6 @@ export interface AppConfig {
     port: number;
     password: string;
   };
-  kafka: {
-    brokers: string[];
-    consumerGroup: string;
-  };
   coreApi: {
     baseUrl: string;
     timeoutMs: number;
@@ -39,10 +35,6 @@ export default (): AppConfig => ({
   redis: {
     ...parseHostPort(process.env.REDIS_ADDR ?? '127.0.0.1:6379'),
     password: process.env.REDIS_PASSWORD ?? '',
-  },
-  kafka: {
-    brokers: (process.env.KAFKA_BOOTSTRAP_SERVERS ?? '').split(','),
-    consumerGroup: process.env.ADMIN_API_CONSUMER_GROUP ?? 'admin-api',
   },
   coreApi: {
     baseUrl: process.env.CORE_API_BASE_URL ?? 'http://127.0.0.1:8000',

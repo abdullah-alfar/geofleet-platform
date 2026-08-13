@@ -3,8 +3,7 @@ import * as Joi from 'joi';
 /**
  * Fails fast on boot if the environment is misconfigured, rather than
  * surfacing as a confusing runtime error the first time a dependency is
- * touched (e.g. an unreachable Kafka broker discovered only when the first
- * projection consumer starts, phases from now).
+ * touched.
  */
 export const validationSchema = Joi.object({
   NODE_ENV: Joi.string()
@@ -23,22 +22,19 @@ export const validationSchema = Joi.object({
   REDIS_ADDR: Joi.string().required(),
   REDIS_PASSWORD: Joi.string().allow('').default(''),
 
-  KAFKA_BOOTSTRAP_SERVERS: Joi.string().required(),
-  // Not consumed until Phase 4 (projection consumers) — declared now so
-  // .env.example documents the full eventual shape in one place.
-  ADMIN_API_CONSUMER_GROUP: Joi.string().default('admin-api'),
-
   CORE_API_BASE_URL: Joi.string().uri().required(),
   CORE_API_TIMEOUT_MS: Joi.number().integer().positive().default(3000),
 
-  // Required as of Phase 6 (Laravel command integration) — sent as
-  // X-Internal-Service-Token on internal/v1/* calls. See
-  // docs/decisions/0010-internal-service-authentication.md.
+  // Sent as X-Internal-Service-Token on internal/v1/* calls — both
+  // commands and reads go through this boundary now (see
+  // docs/decisions/0010-internal-service-authentication.md and
+  // docs/admin-api/query-apis.md).
   ADMIN_API_INTERNAL_TOKEN: Joi.string().required(),
 
-  // Required as of Phase 2 (auth-only: verifies Sanctum tokens against the
-  // admin_api role — see docs/decisions/0009-admin-identity.md). The
-  // broader admin_read schema for Kafka projections is still Phase 3.
+  // Auth-only: verifies Sanctum tokens against the admin_api role (see
+  // docs/decisions/0009-admin-identity.md). No admin_read schema anymore
+  // — every other query goes through core-api's internal/v1 read
+  // endpoints instead.
   ADMIN_API_POSTGRES_DSN: Joi.string()
     .uri({ scheme: ['postgres', 'postgresql'] })
     .required(),

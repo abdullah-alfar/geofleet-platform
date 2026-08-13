@@ -62,8 +62,9 @@ class PaymentQueryController extends Controller
         ];
     }
 
-    public function show(Payment $payment): AdminPaymentResource
+    /** ->resolve(), not a bare Resource return — see DriverQueryController::show's note on Laravel's default wrapping. */
+    public function show(Payment $payment): array
     {
-        return new AdminPaymentResource($payment->load(['trip', 'customer']));
+        return (new AdminPaymentResource($payment->load(['trip', 'customer'])))->resolve();
     }
 }

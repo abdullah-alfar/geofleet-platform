@@ -32,7 +32,11 @@ class DriverCommandController extends Controller
      * conflict, the same strictness `trips.cancel`/`payments.refund`
      * already apply to their own single-source-status transitions.
      */
-    public function approve(ApproveDriverRequest $request, Driver $driver): DriverResource
+    /** ->resolve(), not a bare Resource return — a bare Resource gets
+     * auto-wrapped in `{"data": {...}}` by Laravel's JsonResource default;
+     * admin-api's DriversService forwards this response flat to
+     * admin-web, which reads `result.status` directly. */
+    public function approve(ApproveDriverRequest $request, Driver $driver): array
     {
         DB::transaction(function () use ($request, $driver): void {
             $affected = Driver::where('id', $driver->id)
@@ -55,7 +59,7 @@ class DriverCommandController extends Controller
             );
         });
 
-        return new DriverResource($driver->fresh());
+        return (new DriverResource($driver->fresh()))->resolve();
     }
 
     /**
@@ -63,7 +67,7 @@ class DriverCommandController extends Controller
      * mechanics — `disable()` below is the same shape for the harsher,
      * intended-as-more-permanent counterpart.
      */
-    public function suspend(SuspendDriverRequest $request, Driver $driver): DriverResource
+    public function suspend(SuspendDriverRequest $request, Driver $driver): array
     {
         return $this->setInactiveStatus($request, $driver, 'suspended', 'driver.suspended');
     }
@@ -78,7 +82,7 @@ class DriverCommandController extends Controller
      * asked for, and disabled is meant to read as a harder stop than
      * suspended, not just a synonym for it.
      */
-    public function disable(DisableDriverRequest $request, Driver $driver): DriverResource
+    public function disable(DisableDriverRequest $request, Driver $driver): array
     {
         return $this->setInactiveStatus($request, $driver, 'disabled', 'driver.disabled');
     }
@@ -99,7 +103,7 @@ class DriverCommandController extends Controller
         Driver $driver,
         string $targetStatus,
         string $auditAction,
-    ): DriverResource {
+    ): array {
         $previousStatus = $driver->status;
 
         DB::transaction(function () use ($request, $driver, $previousStatus, $targetStatus, $auditAction): void {
@@ -126,7 +130,7 @@ class DriverCommandController extends Controller
             );
         });
 
-        return new DriverResource($driver->fresh());
+        return (new DriverResource($driver->fresh()))->resolve();
     }
 
     /**
@@ -137,7 +141,7 @@ class DriverCommandController extends Controller
      * than suspend, and silently letting "unsuspend" reverse it would
      * undermine that distinction.
      */
-    public function unsuspend(UnsuspendDriverRequest $request, Driver $driver): DriverResource
+    public function unsuspend(UnsuspendDriverRequest $request, Driver $driver): array
     {
         DB::transaction(function () use ($request, $driver): void {
             $affected = Driver::where('id', $driver->id)
@@ -160,7 +164,7 @@ class DriverCommandController extends Controller
             );
         });
 
-        return new DriverResource($driver->fresh());
+        return (new DriverResource($driver->fresh()))->resolve();
     }
 
     /**

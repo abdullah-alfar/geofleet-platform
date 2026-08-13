@@ -13,7 +13,6 @@ import {
 } from '@nestjs/terminus';
 import type { Response } from 'express';
 import { CoreApiHealthIndicator } from './indicators/core-api.indicator';
-import { KafkaHealthIndicator } from './indicators/kafka.indicator';
 import { PostgresHealthIndicator } from './indicators/postgres.indicator';
 import { RedisHealthIndicator } from './indicators/redis.indicator';
 
@@ -23,14 +22,13 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly redis: RedisHealthIndicator,
-    private readonly kafka: KafkaHealthIndicator,
     private readonly coreApi: CoreApiHealthIndicator,
     private readonly postgres: PostgresHealthIndicator,
   ) {}
 
   /**
    * Pure liveness — never touches an external dependency. An outage in
-   * Postgres/Redis/Kafka/core-api must not make an orchestrator kill and
+   * Postgres/Redis/core-api must not make an orchestrator kill and
    * restart an otherwise-healthy process (same rule location-service's
    * /healthz already follows).
    */
@@ -53,7 +51,9 @@ export class HealthController {
   @ApiOperation({
     summary:
       'Readiness — checks every dependency this instance actually needs ' +
-      '(Redis, Kafka, core-api, Postgres via the admin_api auth-only role).',
+      '(Redis, core-api, Postgres via the admin_api auth-only role). No ' +
+      'Kafka indicator — admin-api reads live from core-api now instead ' +
+      'of consuming events.',
   })
   @HealthCheck()
   async ready(
@@ -62,7 +62,6 @@ export class HealthController {
     try {
       return await this.health.check([
         (): Promise<HealthIndicatorResult> => this.redis.check('redis'),
-        (): Promise<HealthIndicatorResult> => this.kafka.check('kafka'),
         (): Promise<HealthIndicatorResult> => this.coreApi.check('core_api'),
         (): Promise<HealthIndicatorResult> => this.postgres.check('postgres'),
       ]);
