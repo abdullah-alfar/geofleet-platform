@@ -18,10 +18,10 @@ const command = useAdminCommand();
 const successMessage = ref<string | null>(null);
 
 /** core-api's own DriverResource shape (Phase 6) — different field names
- * than admin-api's Kafka-projected Driver above (`id` not `driver_id`,
- * `is_available` not `availability_status`). Used only to confirm the
- * command actually landed; the page re-fetches the projection view
- * afterward rather than trying to merge the two shapes together. */
+ * than the Driver type above (`id` not `driver_id`, `is_available` not
+ * `availability_status`). Used only to confirm the command actually
+ * landed; the page re-fetches its own detail view afterward, which now
+ * reads live from core-api too, so there's no lag between the two. */
 interface DriverCommandResult {
   id: string;
   status: string;
@@ -41,7 +41,7 @@ async function runDriverCommand(action: 'approve' | 'suspend' | 'unsuspend' | 'd
     reason || undefined,
   );
   if (result) {
-    successMessage.value = `Driver ${ACTION_LABELS[action]} (core-api status: ${result.status}). The list view may take a moment to reflect it — it's rebuilt from Kafka events, not read live from core-api.`;
+    successMessage.value = `Driver ${ACTION_LABELS[action]} (status: ${result.status}).`;
     await refresh();
   }
 }
@@ -131,15 +131,9 @@ async function runDriverCommand(action: 'approve' | 'suspend' | 'unsuspend' | 'd
           <dd class="text-slate-900">{{ driver.active_trip_id ?? '—' }}</dd>
         </div>
         <div>
-          <dt class="text-slate-500">Last seen</dt>
+          <dt class="text-slate-500">Last available</dt>
           <dd class="text-slate-900">
-            {{ driver.last_seen_at ? new Date(driver.last_seen_at).toLocaleString() : '—' }}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-slate-500">Last location</dt>
-          <dd class="text-slate-900">
-            {{ driver.last_location_at ? new Date(driver.last_location_at).toLocaleString() : '—' }}
+            {{ driver.last_available_at ? new Date(driver.last_available_at).toLocaleString() : '—' }}
           </dd>
         </div>
       </dl>

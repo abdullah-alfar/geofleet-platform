@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Internal;
 
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -10,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * region, the same denormalization the old Kafka projection did at
  * write-time. Here it's just a join, evaluated live.
  *
- * @mixin \App\Models\Payment
+ * @mixin Payment
  */
 class AdminPaymentResource extends JsonResource
 {

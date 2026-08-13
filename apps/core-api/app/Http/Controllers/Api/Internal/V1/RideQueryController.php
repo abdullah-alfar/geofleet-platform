@@ -8,6 +8,7 @@ use App\Http\Resources\Internal\AdminRideResource;
 use App\Models\RideRequest;
 use App\Support\CursorPagination;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class RideQueryController extends Controller
 {
@@ -75,7 +76,7 @@ class RideQueryController extends Controller
         ];
     }
 
-    public function offers(RideRequest $rideRequest): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
+    public function offers(RideRequest $rideRequest): AnonymousResourceCollection
     {
         $offers = $rideRequest->offers()
             ->with('driver')

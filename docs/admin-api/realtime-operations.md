@@ -1,13 +1,14 @@
 # admin-api: Realtime operations (Phase 7)
 
 The only part of admin-api that reads Redis for anything beyond a health
-ping — see the "Reads live operational state where useful (Phase 7)"
-line in [architecture.md](architecture.md)'s target container diagram.
-Everything else in admin-api (Phases 3-6) is Postgres/Kafka-projection
-based; this phase exists because a Kafka projection is fundamentally
-lagged (it reflects the last *event*, not "right now"), and a live
-driver map genuinely needs fresher state than that for the specific,
-narrow question of "where is this driver, this second."
+ping — see [architecture.md](architecture.md). Everything else in
+admin-api reads core-api's own tables live, through core-api's
+`internal/v1` API ([query-apis.md](query-apis.md)); this module exists
+because even a live read of core-api's Postgres tables doesn't have a
+driver's current GPS position at all — that state only ever lives in
+dispatch-service's own Redis index, not in any table core-api owns — so
+"where is this driver, this second" has exactly one real source, and
+this is the only place in admin-api that reads it.
 
 ## Why Redis, and which keys
 
@@ -18,9 +19,9 @@ GPS ping and every availability change (see
 `apps/dispatch-service/internal/driverindex/driverindex.go`). admin-api
 reads this key, never writes it, and never touches
 `dispatch:geocell:{geohash}` (dispatch-service's geohash-cell candidate
-index) — region scoping comes from Postgres
-(`admin_driver_projection.region_id`, a real business concept, already
-indexed), then only the already-known driver ids are looked up in Redis.
+index) — region scoping comes from a `GET /internal/v1/drivers?region_id=`
+call to core-api (`drivers.region_id`, a real, indexed column), then only
+the already-known driver ids are looked up in Redis.
 Re-implementing geohash neighbor search in TypeScript to solve a problem
 dispatch-service already solves for its own purpose would be pure
 duplication for no benefit — this module is a *reader* of an existing
@@ -44,19 +45,19 @@ intended usage pattern.
 
 | Route | Permission | Throttle | Source |
 |---|---|---|---|
-| `GET /realtime/regions/:regionId/drivers` | `drivers.view` | 20/min | Postgres (region → driver ids) + Redis (position) |
-| `GET /realtime/regions/:regionId/counters` | `dashboard.view` | 30/min | Postgres (region → driver ids) + Redis (presence/availability) |
-| `GET /realtime/incidents` | `dashboard.view` | 30/min | Postgres only (`admin_ride_projection`, `admin_trip_projection`) + Redis (driver presence) |
+| `GET /realtime/regions/:regionId/drivers` | `drivers.view` | 20/min | core-api (region → driver ids) + Redis (position) |
+| `GET /realtime/regions/:regionId/counters` | `dashboard.view` | 30/min | core-api (region → driver ids) + Redis (presence/availability) |
+| `GET /realtime/incidents` | `dashboard.view` | 30/min | core-api (`GET /internal/v1/rides`, `/trips`, `order=oldest`) + Redis (driver presence) |
 
 ### Driver map and live counters
 
-Both start from the same query — `admin_driver_projection` filtered by
-`region_id`, capped at `MAX_MAP_DRIVERS` (500; an admin map isn't meant to
-render thousands of pins, and no region in this platform is near that
-scale today — a hard cap, not real pagination, since a live-polling map
-can't reasonably page through "the rest" the way a browsable list can) —
-then one pipelined `MGET dispatch:driver:{id}` for every id in that page
-(one Redis round trip, not N). A driver only appears if their key exists
+Both start from the same call — `GET /internal/v1/drivers?region_id=...`
+against core-api, capped at `MAX_MAP_DRIVERS` (500; an admin map isn't
+meant to render thousands of pins, and no region in this platform is near
+that scale today — a hard cap, not real pagination, since a live-polling
+map can't reasonably page through "the rest" the way a browsable list
+can) — then one pipelined `MGET dispatch:driver:{id}` for every id in
+that page (one Redis round trip, not N). A driver only appears if their key exists
 **and** is fresh (see below); everyone else is silently omitted, not an
 error — a live map degrading by one missing pin beats a 500 for everyone.
 
@@ -89,17 +90,20 @@ Two computed signals, not a new incidents table or domain model — every
 value comes from data this platform already has:
 
 1. **`stale_searching_ride`** — a ride request still `status = 'searching'`
-   in `admin_ride_projection` after `STALE_SEARCHING_THRESHOLD_MS` (2
-   minutes — several multiples of dispatch-service's own `OFFER_TTL`,
-   15s per offer; a ride still searching that many offer-cycles later has
-   likely exhausted nearby candidates, not just mid-match).
+   after `STALE_SEARCHING_THRESHOLD_MS` (2 minutes — several multiples of
+   dispatch-service's own `OFFER_TTL`, 15s per offer; a ride still
+   searching that many offer-cycles later has likely exhausted nearby
+   candidates, not just mid-match). Fetched via
+   `GET /internal/v1/rides?status=searching&date_to=<threshold>&order=oldest`.
 2. **`silent_driver_on_trip`** — a trip `status = 'in_progress'` whose
    driver has no fresh `dispatch:driver:{id}` state (missing, or stale by
    the same `isFresh()` check the driver map uses) — a driver who's gone
-   quiet mid-trip.
+   quiet mid-trip. Fetched via
+   `GET /internal/v1/trips?status=in_progress&order=oldest`.
 
-Both queries are capped at `MAX_INCIDENTS_PER_TYPE` (100), oldest/worst
-first (`ORDER BY ... ASC` on the staleness-defining timestamp) — caught
+Both calls are capped at `MAX_INCIDENTS_PER_TYPE` (100), oldest/worst
+first (core-api's own `order=oldest` sorts by the staleness-defining
+timestamp ascending — see [query-apis.md](query-apis.md)) — caught
 live: this platform's earlier load-testing phases left **86 real** ride
 requests genuinely stuck in `searching` for 5+ hours (no driver ever
 available at the time they were created, and nothing ever swept them to
@@ -122,12 +126,12 @@ applies to list endpoints (cursor pagination, Phase 5).
   resolved to `unavailable`) that had no visibility anywhere in the
   platform until this endpoint existed.
 - **`silent_driver_on_trip` incidents**: could not be exercised
-  organically — same standing gap Phase 4/5/6 already documented (nothing
-  in core-api creates `trips` rows yet). Verified against one row inserted
-  directly into `admin_read.admin_trip_projection` via `psql`
-  (`status = 'in_progress'`, a random driver id with no Redis key —
-  same "manufactured, documented, deleted afterward" precedent Phase 6
-  used for `Trip::forceCreate()`), confirmed detected, then deleted.
+  organically — same standing gap documented elsewhere (nothing in
+  core-api creates `trips` rows yet). Verified against one row inserted
+  directly into core-api's own `trips` table (`Trip::forceCreate()`,
+  `status = 'in_progress'`, a random driver id with no Redis key — same
+  "manufactured, documented, deleted afterward" precedent Phase 6 used),
+  confirmed detected via `GET /realtime/incidents`, then deleted.
 - **Permission enforcement**: real — `operations_admin` (has
   `drivers.view`) succeeded on the driver map; `finance_admin` (does not)
   got `403`; both succeeded on counters (`dashboard.view`, which both

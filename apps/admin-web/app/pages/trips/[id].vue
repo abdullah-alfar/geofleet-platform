@@ -31,7 +31,7 @@ async function onCancel(reason: string) {
     reason || undefined,
   );
   if (result) {
-    successMessage.value = `Trip cancelled (core-api status: ${result.status}). The list view may take a moment to reflect it — it's rebuilt from Kafka events, not read live from core-api.`;
+    successMessage.value = `Trip cancelled (status: ${result.status}).`;
     await refresh();
   }
 }
@@ -86,12 +86,8 @@ async function onCancel(reason: string) {
           <dd class="text-slate-900">{{ trip.customer_id }}</dd>
         </div>
         <div>
-          <dt class="text-slate-500">Estimated price</dt>
-          <dd class="text-slate-900">{{ trip.estimated_price ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt class="text-slate-500">Final price</dt>
-          <dd class="text-slate-900">{{ trip.final_price ?? '—' }}</dd>
+          <dt class="text-slate-500">Fare</dt>
+          <dd class="text-slate-900">{{ trip.fare_amount ?? '—' }} {{ trip.currency ?? '' }}</dd>
         </div>
       </dl>
 

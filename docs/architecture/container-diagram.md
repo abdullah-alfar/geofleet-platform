@@ -24,7 +24,7 @@ C4Container
         Container(locationService, "location-service", "Go 1.26.3", "Validates and ingests driver GPS updates. Port 8081.")
         Container(dispatchService, "dispatch-service", "Go 1.26.3", "Matches ride requests to nearby drivers; atomic ride-acceptance. Port 8082.")
         Container(realtimeGateway, "realtime-gateway", "Go 1.26.3", "Relays ride-lifecycle events and live driver location to WebSocket clients. Port 8083.")
-        Container(adminApi, "admin-api", "NestJS 11 / TypeScript", "Admin BFF: aggregates Kafka-derived read models, forwards commands to core-api's internal API, reads live driver state from Redis. Never writes to core-api's tables directly. Port 3001.")
+        Container(adminApi, "admin-api", "NestJS 11 / TypeScript", "Admin BFF: reads live from and forwards commands to core-api's internal API, reads live driver state from Redis. Never reads or writes core-api's tables directly. Port 3001.")
 
         ContainerDb(postgres, "Postgres", "PostgreSQL 16 + PostGIS 3.4", "System of record. One database, per-service least-privilege roles. Host port 55432.")
         ContainerDb(redis, "Redis", "Redis 7.4", "Latest-driver-location cache, geo-cell driver index, realtime-gateway Pub/Sub + correlation state, core-api cache/session. Host port 63790.")
@@ -57,10 +57,9 @@ C4Container
     Rel(realtimeGateway, redis, "Pub/Sub fan-out (rt:driver:*, rt:customer:*) + TTL correlation state", "Redis protocol")
     Rel(realtimeGateway, kafka, "Consumes ride.* + driver.location.validated.v1; publishes nothing", "Kafka protocol")
 
-    Rel(adminApi, postgres, "Owns the admin_read schema (role: admin_api); reads 3 auth tables in public — never core-api's business tables", "libpq")
-    Rel(adminApi, kafka, "Consumes 9 domain-event topics -> admin_read projections", "Kafka protocol")
+    Rel(adminApi, postgres, "Auth-only (role: admin_api): reads 3 tables in public — never core-api's business tables", "libpq")
     Rel(adminApi, redis, "Reads dispatch-service's live driver state, read-only", "Redis protocol")
-    Rel(adminApi, coreApi, "Forwards operational commands only: PATCH /internal/v1/*", "HTTPS, shared secret")
+    Rel(adminApi, coreApi, "Reads and forwards commands: GET/PATCH /internal/v1/*", "HTTPS, shared secret")
 
     Rel(coreApi, paymentProvider, "Charges / refunds (planned)", "HTTPS")
 ```
@@ -73,7 +72,7 @@ C4Container
 | [location-service](../../apps/location-service/README.md) | Go 1.26.3 | 8081 | GPS ingestion + validation, "latest location" cache |
 | [dispatch-service](../../apps/dispatch-service/README.md) | Go 1.26.3 | 8082 | Nearby-driver matching, ride offers, atomic acceptance |
 | [realtime-gateway](../../apps/realtime-gateway/README.md) | Go 1.26.3 | 8083 | WebSocket push of ride-lifecycle events + live location |
-| [admin-api](../../apps/admin-api/README.md) | NestJS 11 / TypeScript | 3001 | Admin BFF — query aggregation (Kafka projections), command forwarding, live driver map |
+| [admin-api](../../apps/admin-api/README.md) | NestJS 11 / TypeScript | 3001 | Admin BFF — reads core-api live, command forwarding, live driver map |
 
 None of the three Go services own domain data beyond the narrow Postgres
 slice AGENTS.md's least-privilege convention grants them — core-api is the
@@ -83,10 +82,12 @@ service's exact grant is a per-service ADR: location-service
 dispatch-service ([0005](../decisions/0005-geohash-and-dispatch-db-access.md)),
 realtime-gateway ([0006](../decisions/0006-realtime-gateway-fanout.md)).
 admin-api is held to a *stricter* rule than any of the three Go
-services — it owns its own schema (`admin_read`) outright rather than
-getting a narrow grant on core-api's tables, and has no write path to
-core-api's business tables at all, not even a single-row conditional
-`UPDATE` — see [docs/admin-api/architecture.md](../admin-api/architecture.md)'s
+services — it gets no grant on core-api's business tables at all, not
+even a read-only one (its Postgres role is auth-only — three columns
+across three tables, to verify a Sanctum token), and has no write path
+either, not even a single-row conditional `UPDATE`. Every business read
+and write goes through core-api's own `internal/v1` API instead — see
+[docs/admin-api/architecture.md](../admin-api/architecture.md)'s
 "Critical architecture rule" and [ADR 0009](../decisions/0009-admin-identity.md)/
 [ADR 0010](../decisions/0010-internal-service-authentication.md).
 
@@ -94,9 +95,9 @@ core-api's business tables at all, not even a single-row conditional
 
 | Container | Used by | For |
 |---|---|---|
-| Postgres 16 + PostGIS 3.4 | all five services | System of record. One physical database, one role per service (`location_service`, `dispatch_service`, `realtime_gateway`, `admin_api`; core-api connects as the migration-owning role). No service reads or writes another's tables outside its granted role — `admin_api` is the only one that *owns* a whole schema (`admin_read`) rather than getting column-scoped grants on core-api's own tables. |
-| Redis 7.4 | all five services | Five unrelated uses sharing one instance: location-service's latest-location/rate-limit keys, dispatch-service's geohash driver index, realtime-gateway's Pub/Sub channels + correlation state, core-api's framework cache/session store (`CACHE_STORE=redis`, `SESSION_DRIVER=redis` — carries no domain data at all, unlike the others), and admin-api's read-only lookups of dispatch-service's own `dispatch:driver:{id}` keys (Phase 7 — never writes, never touches `dispatch:geocell:*`). |
-| Kafka 3.9 (KRaft, single broker) | all five services | The only inter-service event bus (AGENTS.md hard invariant — no service calls another's HTTP API for anything on the write path, except the driver-facing accept/reject calls dispatch-service itself serves, and admin-api's command forwarding to core-api's internal API). See [topic-catalog.md](../events/topic-catalog.md) for every topic and [data-flow.md](data-flow.md) for how events actually move end to end. admin-api consumes 9 of them into its own read-model schema; it publishes to none. |
+| Postgres 16 + PostGIS 3.4 | all five services | System of record. One physical database, one role per service (`location_service`, `dispatch_service`, `realtime_gateway`, `admin_api`; core-api connects as the migration-owning role). No service reads or writes another's tables outside its granted role — `admin_api`'s own role is the narrowest of the four, auth-only (three columns across `personal_access_tokens`/`users`/`admins`), no schema of its own; it reads core-api's business data through core-api's own API instead. |
+| Redis 7.4 | all five services | Five unrelated uses sharing one instance: location-service's latest-location/rate-limit keys, dispatch-service's geohash driver index, realtime-gateway's Pub/Sub channels + correlation state, core-api's framework cache/session store (`CACHE_STORE=redis`, `SESSION_DRIVER=redis` — carries no domain data at all, unlike the others), and admin-api's read-only lookups of dispatch-service's own `dispatch:driver:{id}` keys (never writes, never touches `dispatch:geocell:*`). |
+| Kafka 3.9 (KRaft, single broker) | core-api, location-service, dispatch-service, realtime-gateway | The only inter-service event bus (AGENTS.md hard invariant — no service calls another's HTTP API for anything on the write path, except the driver-facing accept/reject calls dispatch-service itself serves, and admin-api's command/query calls to core-api's internal API). See [topic-catalog.md](../events/topic-catalog.md) for every topic and [data-flow.md](data-flow.md) for how events actually move end to end. admin-api doesn't use Kafka at all — it ran a 9-topic projection consumer through an earlier phase, retired in favor of reading core-api live (see [docs/admin-api/architecture.md](../admin-api/architecture.md)). |
 
 ## Authentication credentials by container
 

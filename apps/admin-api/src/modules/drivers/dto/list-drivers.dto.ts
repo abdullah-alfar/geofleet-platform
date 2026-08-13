@@ -32,14 +32,14 @@ export class ListDriversDto extends PaginationQueryDto {
   region_id?: string;
 
   @ApiPropertyOptional({
-    description: 'ISO 8601 — drivers last seen at or after this time.',
+    description: 'ISO 8601 — against drivers.last_available_at, at or after this time.',
   })
   @IsOptional()
   @IsDateString()
   last_seen_from?: string;
 
   @ApiPropertyOptional({
-    description: 'ISO 8601 — drivers last seen at or before this time.',
+    description: 'ISO 8601 — against drivers.last_available_at, at or before this time.',
   })
   @IsOptional()
   @IsDateString()
@@ -62,9 +62,7 @@ export class ListDriversDto extends PaginationQueryDto {
   rating_to?: number;
 
   @ApiPropertyOptional({
-    description:
-      'Matches against driver_id (prefix). No name-based search is possible yet — ' +
-      'driver.status.changed.v1 carries no name, see docs/admin-api/kafka-projections.md.',
+    description: "Matches against the driver's name (prefix, case-insensitive).",
   })
   @IsOptional()
   @IsString()

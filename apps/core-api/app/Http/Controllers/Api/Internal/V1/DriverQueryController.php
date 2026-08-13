@@ -32,7 +32,11 @@ class DriverQueryController extends Controller
             'rating_to' => ['nullable', 'numeric'],
             'search' => ['nullable', 'string'],
             'cursor' => ['nullable', 'string'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
+            // 501, not 500 — RealtimeService's region driver-map/counters
+            // calls request MAX_MAP_DRIVERS+1 (501) deliberately, to tell
+            // "exactly 500 drivers" apart from "truncated" without a
+            // second round trip.
+            'limit' => ['nullable', 'integer', 'min:1', 'max:501'],
         ]);
 
         $query = Driver::query()->with(['user', 'activeVehicle']);

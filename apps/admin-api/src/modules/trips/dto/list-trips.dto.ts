@@ -32,21 +32,21 @@ export class ListTripsDto extends PaginationQueryDto {
   customer_id?: string;
 
   @ApiPropertyOptional({
-    description: 'ISO 8601 — requested at or after this time.',
+    description: 'ISO 8601 — against trips.started_at, at or after this time.',
   })
   @IsOptional()
   @IsDateString()
   date_from?: string;
 
   @ApiPropertyOptional({
-    description: 'ISO 8601 — requested at or before this time.',
+    description: 'ISO 8601 — against trips.started_at, at or before this time.',
   })
   @IsOptional()
   @IsDateString()
   date_to?: string;
 
   @ApiPropertyOptional({
-    description: 'Against final_price, falling back to estimated_price.',
+    description: 'Against trips.fare_amount (null until the trip completes).',
   })
   @IsOptional()
   @Type(() => Number)
@@ -55,7 +55,7 @@ export class ListTripsDto extends PaginationQueryDto {
   minimum_price?: number;
 
   @ApiPropertyOptional({
-    description: 'Against final_price, falling back to estimated_price.',
+    description: 'Against trips.fare_amount (null until the trip completes).',
   })
   @IsOptional()
   @Type(() => Number)

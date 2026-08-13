@@ -4,31 +4,26 @@
 
 ```mermaid
 C4Container
-    title GeoFleet Admin API — Target Architecture
+    title GeoFleet Admin API — Current Architecture
 
     Person(adminUser, "Admin / Operator", "Uses the admin web dashboard")
 
     System_Boundary(admin, "Admin BFF") {
-        Container(adminWeb, "Admin Web", "SPA (out of scope for this repo)", "The dashboard UI")
-        Container(adminApi, "admin-api", "NestJS 11 / TypeScript", "Query aggregation, Kafka projections, command forwarding. Port 3001.")
-        ContainerDb(adminRead, "admin_read schema", "Postgres, same instance as core_api", "Read models only. Phase 3.")
+        Container(adminWeb, "Admin Web", "Nuxt 4 SPA (apps/admin-web)", "The dashboard UI")
+        Container(adminApi, "admin-api", "NestJS 11 / TypeScript", "Query proxy + command forwarding. Port 3001.")
     }
 
     System_Boundary(platform, "Existing GeoFleet Platform") {
-        Container(coreApi, "core-api", "Laravel 13", "Owns all business-domain writes. Port 8000.")
+        Container(coreApi, "core-api", "Laravel 13", "Owns all business-domain reads and writes. Port 8000.")
         ContainerDb(postgres, "Postgres", "core_api database", "System of record")
-        Container(kafka, "Kafka", "Single broker, KRaft", "Event bus")
         ContainerDb(redis, "Redis", "Shared instance", "Live derived state")
     }
 
     Rel(adminUser, adminWeb, "Uses", "HTTPS")
     Rel(adminWeb, adminApi, "Queries + commands", "HTTPS, Bearer admin token")
-    Rel(adminApi, adminRead, "Reads/writes its own projections", "SQL")
-    Rel(adminApi, kafka, "Consumes domain events -> projections (Phase 4)", "Kafka protocol")
-    Rel(adminApi, coreApi, "Forwards commands only: POST /internal/v1/... (Phase 6)", "HTTPS")
-    Rel(adminApi, redis, "Reads live operational state where useful (Phase 7)", "Redis protocol")
-    Rel(coreApi, postgres, "Owns schema; all business writes", "libpq")
-    Rel(coreApi, kafka, "Publishes via transactional outbox", "Kafka protocol")
+    Rel(adminApi, coreApi, "Reads + forwards commands: GET/PATCH /internal/v1/...", "HTTPS, shared-secret token")
+    Rel(adminApi, redis, "Reads live operational state where useful (dispatch-service's own index)", "Redis protocol")
+    Rel(coreApi, postgres, "Owns schema; all business reads/writes", "libpq")
 
     UpdateRelStyle(adminApi, postgres, $offsetY="-40")
     Rel(adminApi, postgres, "NEVER: no direct read or write to core-api's tables", "✗")
@@ -36,7 +31,9 @@ C4Container
 
 The last relationship is drawn deliberately to make the forbidden edge
 visible, not to describe real traffic — see "Critical architecture rule"
-below.
+below. No Kafka in this diagram: admin-api ran a Kafka-projection
+read model through Phase 4/5, then retired it — see "Kafka projections
+retired" below.
 
 ## What's actually built (all 7 phases complete)
 
@@ -68,25 +65,65 @@ each one's own live verification found):
   region-scoped live driver map, live driver counters, and a computed
   incident feed, all sourced from dispatch-service's own Redis index.
 
-Nothing in the target diagram above is unbuilt or stubbed. The one
-deliberate gap that remains isn't in admin-api at all: two of the five
-`admin_read` projection tables (`admin_trip_projection`,
-`admin_payment_projection`) stay empty because core-api itself has no
-`trips`/`payments`-creating flow yet — a producer-side gap this service
-can't close from its own side, documented in
-[read-models.md](read-models.md) and revisited in every later phase's own
-docs.
+Nothing in the original target diagram was unbuilt or stubbed by the end
+of Phase 7. It has since changed shape — see the next section.
+
+## Kafka projections retired — reads go straight to core-api
+
+Phases 3/4 built a Kafka-projected `admin_read` schema (5 tables + an
+inbox) as admin-api's own read model, consumed from 9 live topics. That
+architecture is gone: `DashboardService`/`DriversService`/`RidesService`/
+`TripsService`/`PaymentsService`/`RealtimeService` now call core-api's
+own `internal/v1` read endpoints directly and synchronously (see
+[query-apis.md](query-apis.md)), the same shared-secret boundary Phase 6
+already built for commands. `KafkaModule`, every projection handler, the
+Kysely `DatabaseModule`, and the `admin_read` schema itself (dropped via
+migration on core-api's side) are all deleted, not just unused.
+
+**Why**: admin traffic is low-volume — a handful of operators polling a
+dashboard, not a customer-facing surface under real load. The eventual-
+consistency lag a Kafka projection buys (decoupling read load from
+core-api under high query volume) wasn't a real problem this project
+had; it *was* paying real, ongoing costs — a second schema to migrate,
+a consumer process that could silently drop behind, and (the concrete
+bug this surfaced) admin-web's own list views permanently unable to
+reflect state that only a Kafka event carried, because some real fields
+(a driver's name, an accurate current status) either never made it into
+an event payload or required extending one. Reading `drivers`/
+`ride_requests`/`trips`/`payments` directly gives every field core-api's
+own tables actually have — including a driver's real name, something no
+event ever carried — with no event-schema design step in between.
+
+**What was lost, honestly**: `admin_trip_projection`/
+`admin_payment_projection` staying empty (no `trip.*`/`payment.*`
+producer in core-api) is no longer a read-side gap at all — `trips`/
+`payments` are queried directly, so `GET /trips`/`GET /payments` return
+real rows the moment core-api's own tables have any (there just aren't
+many yet, a genuinely separate gap: nothing creates `trips` rows from a
+completed ride today). The ride-lifecycle timeline lost its finer
+`search_started_at`/`assigned_at`/`unavailable_at` milestones — those
+only ever existed as distinct Kafka event timestamps with no real-table
+column behind them; the timeline core-api now returns uses
+`ride_requests`' own `requested_at`/`accepted_at`/`cancelled_at`
+instead, real columns, just fewer of them. And a driver's live GPS
+position genuinely isn't in core-api's own tables at all (that's
+location-service's/dispatch-service's Redis, not core-api's Postgres) —
+`RealtimeService` still reads Redis directly for that; nothing else in
+this platform could serve it.
 
 ## Critical architecture rule: query/command separation
 
 core-api owns core business operations and durable domain logic. admin-api
 must never perform a business-state mutation (cancel a trip, assign a
 driver, refund a payment, suspend a driver, ...) by writing directly to a
-core-api-owned Postgres table.
+core-api-owned Postgres table — and, since the Kafka-projection retirement
+above, must never read one directly either. Both commands and queries go
+through core-api's own `internal/v1` API, never admin-api's own copy of
+core-api's tables (there isn't one anymore).
 
 ```
-Commands:  Admin Web -> admin-api -> core-api internal API -> domain logic -> Postgres -> outbox -> Kafka
-Queries:   Kafka -> admin-api projection consumers -> admin_read -> admin-api -> Admin Web
+Commands:  Admin Web -> admin-api -> core-api internal/v1 (PATCH) -> domain logic -> Postgres -> outbox -> Kafka
+Queries:   Admin Web -> admin-api -> core-api internal/v1 (GET)   -> Postgres -> admin-api -> Admin Web
 ```
 
 **Why**: every hard invariant this platform relies on — the transactional
@@ -117,8 +154,8 @@ belongs in the domain layer, not a BFF.
 | Logging | `nestjs-pino` | Structured JSON logs, matching core-api's `Log::shareContext` and every Go service's `log/slog` usage — one correlation id shared across every log line for a request. |
 | Health checks | `@nestjs/terminus` | Standard NestJS health-check plumbing (per-indicator up/down, automatic 503 on failure) — mirrors the shape of each Go service's own `Pinger`-based `/readyz` handler without hand-rolling the same thing a third time. |
 | Metrics | `prom-client`, own `Registry` | Same "own registry, not the global default" rule every Go service's `internal/metrics` package already follows. |
-| HTTP client (core-api calls) | `@nestjs/axios` | Used today only for the `/ready` core-api indicator; will be the base for the Phase 6 Laravel integration client (timeout, correlation-id propagation, structured errors). |
-| Kafka client | `kafkajs` | Used today only for the `/ready` broker-reachability check (`admin().listTopics()`); mature, actively maintained, the de facto standard Node Kafka client — will back the Phase 4 projection consumers. |
+| HTTP client (core-api calls) | `@nestjs/axios` | `CoreApiClientService` — every command *and* query goes through this one client now (see "Kafka projections retired" above); timeout, correlation-id propagation, structured errors, shared-secret header. |
+| Kafka client | ~~`kafkajs`~~ | Removed. Backed Phase 4's projection consumer; no longer used anywhere in admin-api since that consumer was retired. |
 | Redis client | `ioredis` | Used today only for the `/ready` ping; mature, actively maintained, the most common choice in the NestJS ecosystem — will back any Phase 7 live-state reads. |
 | Security headers | `helmet` | Standard, low-risk hardening with no functional trade-off. |
 | Rate limiting | `@nestjs/throttler`, global default (100 req/min/IP) | A conservative floor applied now so even `/health`/`/docs` aren't unprotected; Phase 2 will add a tighter, endpoint-specific policy once real auth/command endpoints exist (mirrors core-api's `throttle:auth` on `/auth/*`). |

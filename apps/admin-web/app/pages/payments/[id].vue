@@ -33,7 +33,7 @@ async function onRefund(reason: string) {
     reason || undefined,
   );
   if (result) {
-    successMessage.value = `Payment refunded (core-api status: ${result.status}). No Kafka event fires for a refund — see docs/admin-api/laravel-integration.md — so this list won't reflect it until you refresh, not because of replication lag.`;
+    successMessage.value = `Payment refunded (status: ${result.status}).`;
     await refresh();
   }
 }

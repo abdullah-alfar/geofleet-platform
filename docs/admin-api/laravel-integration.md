@@ -67,10 +67,10 @@ there and why (a real gap caught live, not designed in from the start).
 admin-api does not re-shape `DriverResource`/`TripResource`/
 `PaymentResource` into its own DTO — core-api's domain logic is the
 source of truth for what a driver/trip/payment looks like after a
-mutation, and admin-api has no independent read of that same row (its own
-projections are Kafka-derived and eventually consistent, not
-transactionally coupled to this write). Duplicating the shape here would
-mean two places that could drift; instead `CoreApiClientService.patch<T>()`
+mutation, and admin-api keeps no independent copy of that row at all
+(no more Kafka-projected `admin_read` schema — see
+[query-apis.md](query-apis.md)). Duplicating the shape here would mean
+two places that could drift; instead `CoreApiClientService.patch<T>()`
 returns core-api's JSON body verbatim, wrapped only by admin-api's own
 `{ data: ... }` envelope.
 
@@ -206,7 +206,14 @@ original 8-phase plan but had no writer until now.
   pool is immediate rather than eventually-consistent-on-next-poll:
   dispatch-service's Redis candidate index already consumes this exact
   topic and drops the driver from matching as soon as the message lands —
-  no new consumer needed, for any of the four commands.
+  no new consumer needed, for any of the four commands. The consumer
+  that originally motivated adding `status` to this payload
+  (admin-api's own `admin_driver_projection` handler) no longer exists —
+  see [query-apis.md](query-apis.md) — but the field stays: it's a more
+  complete description of what actually changed, dispatch-service's
+  consumer already tolerates it, and admin-web now sees a driver's
+  `status` via a live `GET /internal/v1/drivers/{id}` read instead of
+  waiting on this event either way.
 - **`trip.cancelled.v1`** — the topic catalog reserved this topic in
   Phase 1 but it never had a producer. Admin-forced cancellation is now
   the first live producer for it — see
@@ -257,6 +264,32 @@ were manually seeded rows (`Trip::forceCreate()`/`Payment::forceCreate()`
 ever constructs one via mass assignment), deleted afterward. The commands
 themselves are fully correct and will operate on real rows the moment
 core-api's trip-creation gap closes.
+
+## A real bug caught while retiring the Kafka read model
+
+Every command controller (`DriverCommandController`, `TripCommandController`,
+`PaymentCommandController`, `AdminAccountController`) returned a bare
+`new XResource(...)` — Laravel's `JsonResource` wraps a single-resource
+response in `{"data": {...}}` by default (`JsonResource::$wrap = 'data'`),
+so core-api's actual response to every command was `{"data": {"id":...,
+"status":...}}`, not the flat object this doc's own chain diagram above
+shows. `CoreApiClientService.patch<T>()` returns that body verbatim, then
+admin-api's own response interceptor wraps it *again* in its own
+`{ data: ... }` envelope — the real, shipped response to admin-web was
+`{"data": {"data": {"id":..., "status":...}}}`, double-nested.
+admin-web's own success-message code (`result.status` in
+drivers/trips/payments' `[id].vue`) had been silently printing
+`undefined` since Phase 6 as a result — never thrown, never failed any
+prior live-verification pass, because those checked core-api's own
+database state and HTTP status codes, not the literal rendered success
+message text. Caught only by directly `curl`-ing an internal/v1 command
+endpoint and reading the actual response body while verifying the new
+query endpoints ([query-apis.md](query-apis.md)) return unwrapped
+`DriverRow` shapes as documented. Fixed by returning
+`(new XResource(...))->resolve()` — the resolved array, not the Resource
+object — from every command controller; `->resolve()` bypasses the
+wrap-check entirely. Re-verified live: `PATCH .../unsuspend` now returns
+a flat `{"id":..., "status":"active", ...}`.
 
 ## A real bug this live verification caught
 

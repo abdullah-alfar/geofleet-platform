@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Internal;
 
+use App\Models\Driver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,7 +16,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * genuinely is, from `drivers.last_available_at`) and the addition of a
  * real `name`/`phone_masked`, which no Kafka event ever carried.
  *
- * @mixin \App\Models\Driver
+ * @mixin Driver
  */
 class AdminDriverResource extends JsonResource
 {

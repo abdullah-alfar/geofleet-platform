@@ -64,9 +64,9 @@ async function bootstrap(): Promise<void> {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('GeoFleet Admin API')
       .setDescription(
-        'Admin BFF for the GeoFleet platform — aggregates read models built ' +
-          'from Kafka projections and forwards operational commands to ' +
-          "core-api's internal API. See docs/admin-api/.",
+        'Admin BFF for the GeoFleet platform — reads live from and ' +
+          "forwards operational commands to core-api's internal API. " +
+          'See docs/admin-api/.',
       )
       .setVersion('0.1.0')
       .addBearerAuth()

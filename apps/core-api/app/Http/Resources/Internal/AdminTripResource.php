@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Internal;
 
+use App\Models\Trip;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,7 +15,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * resource makes moot by reading `trips` directly instead of waiting on
  * an event that was never going to fire).
  *
- * @mixin \App\Models\Trip
+ * @mixin Trip
  */
 class AdminTripResource extends JsonResource
 {

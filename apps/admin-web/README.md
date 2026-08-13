@@ -82,26 +82,26 @@ same abilities admin-api's own `PermissionsGuard` enforces server-side.
 Client-side hiding is a UX nicety, not the security boundary; a hidden
 button doesn't mean the server would have allowed the request anyway.
 
-## Command actions and eventual consistency
+## Command actions read their own result live
 
-Suspend/cancel/refund all POST through admin-api to core-api
-(Phase 6 — see [laravel-integration.md](../../docs/admin-api/laravel-integration.md)).
+Suspend/cancel/refund/approve/etc. all POST through admin-api to
+core-api (see [laravel-integration.md](../../docs/admin-api/laravel-integration.md)).
 The response used for the success message is core-api's own resource
-shape (synchronous, authoritative); the list/detail views the page
-re-fetches afterward read from admin-api's Kafka-projected `admin_read`
-schema, which can lag behind by however long the projection consumer
-takes to process the resulting event. The UI says so explicitly in the
-success message rather than implying the two are the same read.
+shape; the list/detail views the page re-fetches afterward call
+admin-api's own GET endpoints, which now read live from core-api too
+(see [query-apis.md](../../docs/admin-api/query-apis.md)) — no Kafka
+projection in between, so there's no eventual-consistency lag between
+the command's response and the page's own refresh.
 
 ## What's not built
 
 - No realtime *push* — the live map/counters/incidents page polls on a
   timer (staying comfortably under admin-api's per-route throttle limits),
   it doesn't hold a WebSocket open. admin-api itself has no push
-  mechanism to subscribe to (Phase 7 built REST endpoints, not a gateway).
+  mechanism to subscribe to (REST endpoints only, not a gateway).
 - `DriverMap.vue` is a plain auto-fit SVG scatter plot, not a real
   street map — no tile server, no mapping SDK dependency for this first
   pass. Upgrade path exists if real geographic context becomes a real
   need.
-- No audit-log viewer, no admin-account management UI — neither has a
-  backing admin-api endpoint yet.
+- No audit-log viewer — `audit_logs` (core-api, Postgres) has no admin-web
+  page reading it yet, only the command endpoints that write to it.

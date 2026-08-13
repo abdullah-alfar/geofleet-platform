@@ -58,7 +58,7 @@ refresh();
           </td>
           <td class="py-2">{{ trip.status }}</td>
           <td class="py-2">{{ trip.region_id ?? '—' }}</td>
-          <td class="py-2">{{ trip.final_price ?? trip.estimated_price ?? '—' }}</td>
+          <td class="py-2">{{ trip.fare_amount ?? '—' }}</td>
           <td class="py-2">{{ trip.started_at ? new Date(trip.started_at).toLocaleString() : '—' }}</td>
         </tr>
       </tbody>

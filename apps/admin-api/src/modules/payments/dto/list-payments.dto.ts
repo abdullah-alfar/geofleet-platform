@@ -16,7 +16,7 @@ export class ListPaymentsDto extends PaginationQueryDto {
   status?: string;
 
   @ApiPropertyOptional({
-    description: 'Matches admin_payment_projection.provider.',
+    description: 'Matches payments.provider.',
   })
   @IsOptional()
   @IsString()

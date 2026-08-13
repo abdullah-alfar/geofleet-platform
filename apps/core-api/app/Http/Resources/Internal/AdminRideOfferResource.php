@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Internal;
 
+use App\Models\RideOffer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,7 +12,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * one-field alias rather than a frontend change for a rename that carries
  * no new information.
  *
- * @mixin \App\Models\RideOffer
+ * @mixin RideOffer
  */
 class AdminRideOfferResource extends JsonResource
 {

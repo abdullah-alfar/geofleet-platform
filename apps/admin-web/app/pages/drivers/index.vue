@@ -31,7 +31,7 @@ refresh();
         <input v-model="query.region_id" type="text" class="rounded-md border border-slate-300 px-2 py-1.5 text-sm">
       </div>
       <div>
-        <label class="mb-1 block text-xs text-slate-500">Search (driver id prefix)</label>
+        <label class="mb-1 block text-xs text-slate-500">Search (name prefix)</label>
         <input v-model="query.search" type="text" class="rounded-md border border-slate-300 px-2 py-1.5 text-sm">
       </div>
       <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">
@@ -51,7 +51,7 @@ refresh();
           <th class="py-2 font-medium">Availability</th>
           <th class="py-2 font-medium">Vehicle</th>
           <th class="py-2 font-medium">Region</th>
-          <th class="py-2 font-medium">Last seen</th>
+          <th class="py-2 font-medium">Last available</th>
         </tr>
       </thead>
       <tbody>
@@ -73,7 +73,7 @@ refresh();
           <td class="py-2">{{ driver.availability_status ?? '—' }}</td>
           <td class="py-2">{{ driver.vehicle_type ?? '—' }}</td>
           <td class="py-2">{{ driver.region_id ?? '—' }}</td>
-          <td class="py-2">{{ driver.last_seen_at ? new Date(driver.last_seen_at).toLocaleString() : '—' }}</td>
+          <td class="py-2">{{ driver.last_available_at ? new Date(driver.last_available_at).toLocaleString() : '—' }}</td>
         </tr>
       </tbody>
     </table>

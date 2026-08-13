@@ -1,13 +1,16 @@
 # admin-api
 
 NestJS 11 / TypeScript. The Admin BFF for the GeoFleet platform — serves
-the administrative dashboard by aggregating Kafka-derived read models and
-forwarding operational commands to core-api's internal API. Does not own
-core business domain data or mutate Laravel-owned tables directly. See
-[docs/admin-api/overview.md](../../docs/admin-api/overview.md) and
+the administrative dashboard by reading live from and forwarding
+operational commands to core-api's internal API. Does not own core
+business domain data or mutate (or read) Laravel-owned tables directly —
+every query and command goes through core-api's own `internal/v1` API.
+See [docs/admin-api/overview.md](../../docs/admin-api/overview.md) and
 [docs/admin-api/architecture.md](../../docs/admin-api/architecture.md) for
 the full design and the query/command separation this service exists to
-enforce.
+enforce. admin-api ran its own Kafka-projected read model through
+Phase 4/5; that's been retired in favor of reading core-api directly —
+see [docs/admin-api/query-apis.md](../../docs/admin-api/query-apis.md).
 
 This is additive scope, not part of the original 8-phase plan in the repo
 root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
@@ -36,37 +39,27 @@ full detail.
 ```
 src/
   main.ts                    Bootstrap: helmet, CORS, body limits, global pipe, Swagger, global prefix, listen
-  app.module.ts               Root wiring: config, logger, throttler, postgres, database, health, metrics, audit, auth, kafka, query modules
+  app.module.ts               Root wiring: config, logger, throttler, postgres, health, metrics, audit, auth, query modules
   config/                     Joi-validated environment config (fails fast on boot)
   common/
     middleware/                Correlation-ID middleware
     interceptors/               Response envelope ({ data: ... })
     filters/                     Global exception filter ({ error: { code, message, correlation_id } })
-    pagination/                  Cursor encode/decode, shared PaginationQueryDto, PaginatedResponse<T>
-    types/                       Express Request augmentation (correlationId, admin), kafkajs-snappy ambient types
-  health/                      /health (liveness), /ready (Redis/Kafka/core-api/Postgres indicators)
+    pagination/                  Shared PaginationQueryDto, PaginatedResponse<T> — cursors are opaque strings core-api encodes/decodes, admin-api just forwards them
+  health/                      /health (liveness), /ready (Redis/core-api/Postgres indicators — no Kafka indicator anymore)
   metrics/                     /metrics (Prometheus text exposition, own Registry)
   integrations/
-    postgres/                   Shared pg.Pool, connected as the admin_api role (search_path: admin_read, public)
-    kafka/                       KafkaConsumerService (9 live topics, fromBeginning), envelope parsing/validation
-    core-api/                    CoreApiClientService — forwards commands to core-api's internal/v1/* API
+    postgres/                   Shared pg.Pool, connected as the admin_api role — auth-only (personal_access_tokens/users/admins), no admin_read schema anymore
+    core-api/                    CoreApiClientService — the only place any call to core-api is made, both commands (PATCH) and queries (GET)
     redis/                       Shared persistent ioredis client (REDIS_CLIENT) — realtime module's read-only Redis reads
-  database/
-    schema.ts                   Typed Database interface for every admin_read table
-    database.module.ts          Kysely<Database> DI provider, wraps the shared pg.Pool
-    migrate.ts                   Standalone migration CLI (npm run migrate -- up|down|status)
-    migrations/                  admin_consumer_inbox, driver/ride/ride-offer/trip/payment projections, region_metrics
-  projections/
-    projection-dispatcher.service.ts   Inbox-checked, transactional event_type -> handler routing
-    handlers/                    One handler class per live event_type (9 total)
   modules/
     auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
-    audit/                       AuditService — structured-log-only foundation, durable storage not yet needed
-    dashboard/                   GET /dashboard/summary, /dashboard/regions
+    audit/                       AuditService — structured-log mirror only; the durable record is core-api's own audit_logs table
+    dashboard/                   GET /dashboard/summary, /dashboard/regions — proxies core-api's internal/v1/dashboard/*
     drivers/                     GET /drivers, /drivers/:id, POST /drivers/:id/{approve,suspend,unsuspend,disable}
     rides/                       GET /rides, /rides/:id (+ timeline), /rides/:id/offers (+ is_expired)
-    trips/                       GET /trips, /trips/:id (+ timeline), POST /trips/:id/cancel — GETs always empty until Phase 4's producer gap closes
-    payments/                    GET /payments, /payments/:id, POST /payments/:id/refund — GETs always empty until Phase 4's producer gap closes
+    trips/                       GET /trips, /trips/:id (+ timeline), POST /trips/:id/cancel
+    payments/                    GET /payments, /payments/:id, POST /payments/:id/refund
     realtime/                    GET /realtime/regions/:id/{drivers,counters}, /realtime/incidents — the only Redis-backed reads beyond health checks
     admins/                      GET /admins, PATCH /admins/:id/{role,deactivate} — admin account management, super_admin-only
 ```
@@ -79,13 +72,12 @@ and `admin:create`), and at least one admin account:
 
 ```bash
 cd apps/core-api
-php artisan migrate   # creates the admin_api role + admin_read schema, if not already applied
+php artisan migrate   # creates the admin_api role, if not already applied
 php artisan admin:create you@example.com "Your Name" super_admin --password=ChangeMe123
 
 cd ../admin-api
 cp .env.example .env   # ADMIN_API_POSTGRES_DSN's password must match ADMIN_API_DB_PASSWORD in apps/core-api/.env
 npm install
-npm run migrate -- up   # creates the admin_read tables (idempotent — safe to re-run)
 npm run start:dev
 ```
 
@@ -112,26 +104,12 @@ curl http://localhost:3001/api/v1/admin/session -H "Authorization: Bearer $TOKEN
 # Without a token: 401
 curl -i http://localhost:3001/api/v1/admin/session
 
-# Projections populating (needs the Kafka consumer running — check logs
-# for "Kafka consumer running: group \"admin-api\"", then generate real
-# traffic, e.g. cd scripts/loadtest && go run . -drivers=5 -customers=3)
-docker compose exec postgres psql -U core_api -d core_api \
-  -c "SELECT count(*) FROM admin_read.admin_ride_projection;"
+# Drivers list, reading live from core-api (no Kafka, no projection lag)
+curl http://localhost:3001/api/v1/admin/drivers -H "Authorization: Bearer $TOKEN"
 ```
 
 Swagger/OpenAPI UI (non-production only, same convention as core-api's
 `GET /docs`): [http://localhost:3001/docs](http://localhost:3001/docs).
-
-## Database migrations
-
-```bash
-npm run migrate -- status   # list applied/pending migrations
-npm run migrate -- up       # migrate to latest
-npm run migrate -- down     # roll back one migration
-```
-
-See [docs/admin-api/read-models.md](../../docs/admin-api/read-models.md)
-for the schema itself and why each index exists.
 
 ## Tests
 

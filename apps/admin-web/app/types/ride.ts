@@ -10,9 +10,7 @@ export interface Ride {
   dropoff_latitude: number | null;
   dropoff_longitude: number | null;
   requested_at: string | null;
-  search_started_at: string | null;
-  assigned_at: string | null;
-  unavailable_at: string | null;
+  accepted_at: string | null;
   cancelled_at: string | null;
   updated_at: string;
 }

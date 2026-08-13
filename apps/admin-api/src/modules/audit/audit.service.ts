@@ -15,14 +15,12 @@ export interface AuditEntry {
 }
 
 /**
- * Audit *foundation* only: every admin command must be traceable, per the
- * original spec's Admin Audit section, but `admin_action_logs` doesn't
- * exist yet — that table needs the admin_read schema/migrations Phase 3
- * builds. Structured-logging the same shape now means Phase 6 (the first
- * phase with an actual command endpoint to audit) just calls `record()`
- * with no interface change, and Phase 3's persistence layer can replay
- * these from log storage if durable history is needed for anything issued
- * before it existed.
+ * A structured-log mirror of every admin command, for local observability
+ * only — the durable, queryable record lives in core-api's own
+ * `audit_logs` table (`AdminAudit::record`, written by the command
+ * itself once it lands there), not here. admin-api never had its own
+ * audit table; the admin_read schema this comment used to point at for
+ * one is gone now regardless (see docs/admin-api/query-apis.md).
  *
  * Never pass secrets in `metadata` — this is logged, and logs are not a
  * secrets store (see AppModule's pino redact config for what's already

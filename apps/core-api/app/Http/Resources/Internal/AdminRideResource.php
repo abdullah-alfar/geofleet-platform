@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Internal;
 
+use App\Models\RideRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,7 +15,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * column for the "a driver accepted" milestone. See
  * RideQueryController::buildTimeline().
  *
- * @mixin \App\Models\RideRequest
+ * @mixin RideRequest
  */
 class AdminRideResource extends JsonResource
 {
