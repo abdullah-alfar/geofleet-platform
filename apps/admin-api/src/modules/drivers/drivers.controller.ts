@@ -81,4 +81,36 @@ export class DriversController {
   ): Promise<Record<string, unknown>> {
     return this.drivers.suspend(id, admin, dto.reason, req.correlationId);
   }
+
+  @Post(':id/unsuspend')
+  @HttpCode(200)
+  @RequirePermissions('drivers.unsuspend')
+  @ApiOperation({
+    summary:
+      'Restore a suspended driver to active — forwarded to core-api, not a local write.',
+  })
+  unsuspend(
+    @Param('id') id: string,
+    @Body() dto: CommandReasonDto,
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.drivers.unsuspend(id, admin, dto.reason, req.correlationId);
+  }
+
+  @Post(':id/disable')
+  @HttpCode(200)
+  @RequirePermissions('drivers.disable')
+  @ApiOperation({
+    summary:
+      'Permanently disable a driver — forwarded to core-api, not a local write.',
+  })
+  disable(
+    @Param('id') id: string,
+    @Body() dto: CommandReasonDto,
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Req() req: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.drivers.disable(id, admin, dto.reason, req.correlationId);
+  }
 }

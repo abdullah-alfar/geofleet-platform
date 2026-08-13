@@ -22,6 +22,7 @@ import { RidesModule } from './modules/rides/rides.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { AdminsModule } from './modules/admins/admins.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     TripsModule,
     PaymentsModule,
     RealtimeModule,
+    AdminsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

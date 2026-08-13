@@ -16,7 +16,7 @@ core-api, which already works today, not a change to this scheme).
 | `admin_role` | Abilities |
 |---|---|
 | `super_admin` | `*` (Sanctum's own wildcard) |
-| `operations_admin` | `dashboard.view`, `drivers.view`, `drivers.approve`, `drivers.suspend`, `trips.view`, `trips.cancel`, `rides.view`, `operations.manage` |
+| `operations_admin` | `dashboard.view`, `drivers.view`, `drivers.approve`, `drivers.suspend`, `drivers.unsuspend`, `drivers.disable`, `trips.view`, `trips.cancel`, `rides.view`, `operations.manage` |
 | `support_admin` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `audit.view` |
 | `finance_admin` | `dashboard.view`, `payments.view`, `payments.refund`, `audit.view` |
 | `viewer` | `dashboard.view`, `drivers.view`, `trips.view`, `rides.view`, `payments.view`, `audit.view` (read-only, no `.suspend`/`.cancel`/`.refund`/`.manage`) |
@@ -24,6 +24,17 @@ core-api, which already works today, not a change to this scheme).
 Source of truth: `apps/core-api/app/Support/AdminPermissions.php`. Not
 duplicated in admin-api — the token's `abilities` array, read once at
 verification time, is the only copy that matters here.
+
+Two permissions — `admins.view`, `admins.manage` (admin account
+management: list/change-role/deactivate other admins,
+[laravel-integration.md](laravel-integration.md)) — deliberately don't
+appear in *any* role's array above, `super_admin` included. Only
+`super_admin`'s own `'*'` wildcard satisfies them; there was no reason to
+also spell them out explicitly on that row when `'*'` already covers
+everything by definition. Managing who else can operate the admin panel
+is the platform's highest-privilege concern, so this is the one place in
+the permission model deliberately has no path through an enumerated
+ability string — only the wildcard.
 
 ## Requiring a permission on a route
 
@@ -55,11 +66,12 @@ is opt-in per route, not a default-deny.
    them -> `403 Forbidden` listing which ones.
 
 Pure function, no I/O — covered by Jest unit tests
-(`src/modules/auth/guards/permissions.guard.spec.ts`), not live HTTP
-verification, since there's no real permission-gated endpoint yet (that's
-Phase 5/6). `AuthGuard`'s Postgres-dependent identity resolution is what
-got the live verification in this phase — see
-[authentication.md](authentication.md).
+(`src/modules/auth/guards/permissions.guard.spec.ts`) *and*, from Phase 5
+onward, real HTTP traffic against real permission-gated endpoints —
+every later phase's own docs record a token getting exactly the
+`200`/`403` its abilities predict (see
+[query-apis.md](query-apis.md), [laravel-integration.md](laravel-integration.md),
+[realtime-operations.md](realtime-operations.md)).
 
 ## Adding a new permission
 

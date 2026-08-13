@@ -13,6 +13,7 @@ const navItems: NavItem[] = [
   { to: '/trips', label: 'Trips', ability: 'trips.view' },
   { to: '/payments', label: 'Payments', ability: 'payments.view' },
   { to: '/realtime', label: 'Live map', ability: 'drivers.view' },
+  { to: '/admins', label: 'Admins', ability: 'admins.view' },
 ];
 
 const auth = useAuthStore();

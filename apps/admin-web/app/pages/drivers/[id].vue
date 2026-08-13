@@ -27,26 +27,21 @@ interface DriverCommandResult {
   status: string;
 }
 
-async function onSuspend(reason: string) {
-  successMessage.value = null;
-  const result = await command.run<DriverCommandResult>(
-    `/api/v1/admin/drivers/${driverId}/suspend`,
-    reason || undefined,
-  );
-  if (result) {
-    successMessage.value = `Driver suspended (core-api status: ${result.status}). The list view may take a moment to reflect it — it's rebuilt from Kafka events, not read live from core-api.`;
-    await refresh();
-  }
-}
+const ACTION_LABELS: Record<string, string> = {
+  approve: 'approved',
+  suspend: 'suspended',
+  unsuspend: 'unsuspended',
+  disable: 'disabled',
+};
 
-async function onApprove(reason: string) {
+async function runDriverCommand(action: 'approve' | 'suspend' | 'unsuspend' | 'disable', reason: string) {
   successMessage.value = null;
   const result = await command.run<DriverCommandResult>(
-    `/api/v1/admin/drivers/${driverId}/approve`,
+    `/api/v1/admin/drivers/${driverId}/${action}`,
     reason || undefined,
   );
   if (result) {
-    successMessage.value = `Driver approved (core-api status: ${result.status}). The list view may take a moment to reflect it — it's rebuilt from Kafka events, not read live from core-api.`;
+    successMessage.value = `Driver ${ACTION_LABELS[action]} (core-api status: ${result.status}). The list view may take a moment to reflect it — it's rebuilt from Kafka events, not read live from core-api.`;
     await refresh();
   }
 }
@@ -74,14 +69,27 @@ async function onApprove(reason: string) {
             v-if="auth.hasAbility('drivers.approve') && driver.status === 'pending_review'"
             label="Approve driver"
             :pending="command.pending.value"
-            @confirm="onApprove"
+            @confirm="(reason) => runDriverCommand('approve', reason)"
           />
           <CommandButton
-            v-if="auth.hasAbility('drivers.suspend') && driver.status !== 'suspended'"
+            v-if="auth.hasAbility('drivers.unsuspend') && driver.status === 'suspended'"
+            label="Unsuspend driver"
+            :pending="command.pending.value"
+            @confirm="(reason) => runDriverCommand('unsuspend', reason)"
+          />
+          <CommandButton
+            v-if="auth.hasAbility('drivers.suspend') && driver.status !== 'suspended' && driver.status !== 'disabled'"
             label="Suspend driver"
             variant="danger"
             :pending="command.pending.value"
-            @confirm="onSuspend"
+            @confirm="(reason) => runDriverCommand('suspend', reason)"
+          />
+          <CommandButton
+            v-if="auth.hasAbility('drivers.disable') && driver.status !== 'disabled'"
+            label="Disable driver"
+            variant="danger"
+            :pending="command.pending.value"
+            @confirm="(reason) => runDriverCommand('disable', reason)"
           />
         </div>
       </div>

@@ -14,20 +14,22 @@ root [AGENTS.md](../../AGENTS.md) — see that file's phase map and
 [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for how
 admin-api's own phases relate to it.
 
-**Status: Phase 7 of 8 — realtime operations, all phases complete.**
-Phase 5's 11 query endpoints, Phase 6's 3 command endpoints (forward to
+**Status: all 7 phases complete, plus post-Phase-7 additive scope.**
+Phase 5's 11 query endpoints, Phase 6's command endpoints (forward to
 core-api's `internal/v1/*` — see
-[ADR 0010](../../docs/decisions/0010-internal-service-authentication.md)),
-and Phase 7's realtime module: a throttled, region-scoped live driver map
-and live driver counters sourced directly from dispatch-service's own
+[ADR 0010](../../docs/decisions/0010-internal-service-authentication.md)) —
+now 9 driver/trip/payment commands (`approve`/`suspend`/`unsuspend`/
+`disable` for drivers, `cancel` for trips, `refund` for payments) plus
+admin account management (list/change-role/deactivate, super_admin-only)
+— and Phase 7's realtime module: a throttled, region-scoped live driver
+map and live driver counters sourced directly from dispatch-service's own
 Redis index (`dispatch:driver:{id}` — the only Redis reads in admin-api
 beyond a health ping), plus a computed incident feed (stale-searching
-rides, drivers gone silent mid-trip). Live-verified against real
-`scripts/loadtest` traffic and against 86 real stuck ride requests already
-present in this platform's data — see
-[docs/admin-api/realtime-operations.md](../../docs/admin-api/realtime-operations.md)
+rides, drivers gone silent mid-trip). See
+[docs/admin-api/laravel-integration.md](../../docs/admin-api/laravel-integration.md),
+[docs/admin-api/realtime-operations.md](../../docs/admin-api/realtime-operations.md),
 and [docs/admin-api/overview.md](../../docs/admin-api/overview.md) for the
-full phase plan.
+full detail.
 
 ## Structure
 
@@ -61,11 +63,12 @@ src/
     auth/                       TokenVerificationService, AuthGuard, PermissionsGuard, GET /api/v1/admin/session
     audit/                       AuditService — structured-log-only foundation, durable storage not yet needed
     dashboard/                   GET /dashboard/summary, /dashboard/regions
-    drivers/                     GET /drivers, /drivers/:id, POST /drivers/:id/suspend
+    drivers/                     GET /drivers, /drivers/:id, POST /drivers/:id/{approve,suspend,unsuspend,disable}
     rides/                       GET /rides, /rides/:id (+ timeline), /rides/:id/offers (+ is_expired)
     trips/                       GET /trips, /trips/:id (+ timeline), POST /trips/:id/cancel — GETs always empty until Phase 4's producer gap closes
     payments/                    GET /payments, /payments/:id, POST /payments/:id/refund — GETs always empty until Phase 4's producer gap closes
     realtime/                    GET /realtime/regions/:id/{drivers,counters}, /realtime/incidents — the only Redis-backed reads beyond health checks
+    admins/                      GET /admins, PATCH /admins/:id/{role,deactivate} — admin account management, super_admin-only
 ```
 
 ## Running locally

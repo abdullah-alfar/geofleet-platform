@@ -30,15 +30,29 @@ Admin Web
   -> { data: {...} }   [admin-api's response envelope]
 ```
 
-Four commands exist today, one per the abilities `AdminPermissions`
+Six commands exist today, one per the abilities `AdminPermissions`
 already defines (`docs/admin-api/permissions.md`):
 
 | admin-api route | permission | core-api route | Effect |
 |---|---|---|---|
 | `POST /drivers/:id/approve` | `drivers.approve` | `PATCH /internal/v1/drivers/{id}/approve` | `drivers.status = 'active'` (only from `pending_review`) |
 | `POST /drivers/:id/suspend` | `drivers.suspend` | `PATCH /internal/v1/drivers/{id}/suspend` | `drivers.status = 'suspended'`, `is_available = false` |
+| `POST /drivers/:id/unsuspend` | `drivers.unsuspend` | `PATCH /internal/v1/drivers/{id}/unsuspend` | `drivers.status = 'active'` (only from `suspended`) |
+| `POST /drivers/:id/disable` | `drivers.disable` | `PATCH /internal/v1/drivers/{id}/disable` | `drivers.status = 'disabled'`, `is_available = false` (from any non-`disabled` status) |
 | `POST /trips/:id/cancel` | `trips.cancel` | `PATCH /internal/v1/trips/{id}/cancel` | `trips.status = 'cancelled'` (only from `in_progress`) |
 | `POST /payments/:id/refund` | `payments.refund` | `PATCH /internal/v1/payments/{id}/refund` | `payments.status = 'refunded'` (only from `completed`) |
+
+`unsuspend` and `disable` fill out the rest of `drivers.status`'s state
+machine alongside `approve`/`suspend`: `unsuspend` is strict (only from
+`suspended`, matching `approve`'s reasoning — a caller error shouldn't be
+silently absorbed) and deliberately does **not** accept a `disabled`
+driver back to `active` — disable is meant to read as a harder,
+more-permanent stop than suspend, and letting unsuspend reverse it would
+erase that distinction. `disable` is idempotent like `suspend` (same
+`setInactiveStatus()` helper in `DriverCommandController` — "ensure this
+driver is suspended/disabled" is the actual intent of either, not
+"transition from exactly one prior state"). Neither has a reverse for
+`disable` itself — not asked for.
 
 `drivers.approve` closes a gap that existed since the original 8-phase
 plan: nothing anywhere in this platform ever moved a driver out of
@@ -73,6 +87,58 @@ the same code and status, not a generic `core_api_error` wrapper. Only a
 genuinely unreachable core-api (network error, timeout) produces a new
 code — `503 core_api_unavailable` — since there's nothing from core-api to
 pass through in that case.
+
+## Admin account management
+
+A different shape of "command" — managing who else can operate the admin
+panel, not a ride-hailing domain entity:
+
+| admin-api route | permission | core-api route | Effect |
+|---|---|---|---|
+| `GET /admins` | `admins.view` | `GET /internal/v1/admins` | Lists admin accounts |
+| `PATCH /admins/:id/role` | `admins.manage` | `PATCH /internal/v1/admins/{id}/role` | `admins.admin_role = <new role>` |
+| `PATCH /admins/:id/deactivate` | `admins.manage` | `PATCH /internal/v1/admins/{id}/deactivate` | `users.status = 'disabled'` (from any non-`disabled` status) |
+
+Three things distinguish this from every other command in this doc:
+
+- **The first read that goes through `internal/v1/*`.** Admin accounts
+  live in core-api's `public` schema (`users`/`admins`), which admin-api
+  only ever reads through its narrow auth-verification grant (three
+  columns across three tables — see
+  [authentication.md](authentication.md)) — nowhere near enough to serve
+  a list. Rather than widening that grant or inventing a Kafka
+  projection for a handful of platform-security-config rows with no need
+  for eventual consistency, `GET /internal/v1/admins` reuses the same
+  shared-secret boundary the commands already use —
+  [ADR 0010](../decisions/0010-internal-service-authentication.md) scopes
+  `internal/v1` as "service-to-service, no end user," not "mutations
+  only." `CoreApiClientService` gained a `.get<T>()` method for this
+  (`src/integrations/core-api/core-api-client.service.ts`) — the same
+  error-normalization logic `.patch<T>()` already had, factored out.
+- **`admins.view`/`admins.manage` are super_admin-only in practice** —
+  neither string appears in any other role's ability array
+  (`App\Support\AdminPermissions`); only `super_admin`'s own `'*'`
+  wildcard satisfies the check. Managing who else can operate the admin
+  panel is inherently the platform's highest-privilege concern.
+- **Self-protection**: `AdminAccountController::updateRole()`/
+  `::deactivate()` both reject (`422`) if the target account is the
+  caller's own — guards the realistic failure mode of an admin
+  fat-fingering their own row in a list UI and locking themselves (and
+  potentially everyone, if they're the only super_admin) out with no one
+  else around to fix it. admin-web hides the controls for the caller's
+  own row rather than surfacing that error, but the real boundary is
+  server-side.
+
+A real bug this caught before shipping: `AdminAccountResource.id` is the
+`admins` table's own uuid, but `AdminPrincipal.userId` (what `/session`
+returns for the caller's own identity) is the underlying `users.uuid` —
+two different uuids for the same person. admin-web's "is this row me"
+check needs to compare against the *user's* uuid, not the admin row's —
+comparing against `id` would have silently never matched. Fixed by
+exposing a second field, `user_id`, on `AdminAccountResource` and
+threading it through admin-api's `AdminAccountRow` type to admin-web.
+Provisioning a **new** admin still stays `php artisan admin:create` only
+(ADR 0009) — this only manages accounts that already exist.
 
 ## Idempotency and conflict semantics
 

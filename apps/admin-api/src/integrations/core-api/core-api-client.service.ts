@@ -57,18 +57,40 @@ export class CoreApiClientService {
       const response = await firstValueFrom(
         this.http.patch<T>(url, body, {
           timeout: this.timeoutMs,
-          headers: {
-            'X-Internal-Service-Token': this.internalToken,
-            ...(correlationId
-              ? { [CORRELATION_ID_HEADER]: correlationId }
-              : {}),
-          },
+          headers: this.headers(correlationId),
         }),
       );
       return response.data;
     } catch (error) {
       throw this.toAdminApiException(error, url);
     }
+  }
+
+  /** Reads (e.g. listing admin accounts) go through the same
+   * shared-secret internal/v1 boundary as commands — see ADR 0010's own
+   * note that internal/v1 is "service-to-service, no end user," not
+   * specifically "mutations only." */
+  async get<T>(path: string, correlationId?: string): Promise<T> {
+    const url = new URL(path, this.baseUrl).toString();
+
+    try {
+      const response = await firstValueFrom(
+        this.http.get<T>(url, {
+          timeout: this.timeoutMs,
+          headers: this.headers(correlationId),
+        }),
+      );
+      return response.data;
+    } catch (error) {
+      throw this.toAdminApiException(error, url);
+    }
+  }
+
+  private headers(correlationId?: string): Record<string, string> {
+    return {
+      'X-Internal-Service-Token': this.internalToken,
+      ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),
+    };
   }
 
   private toAdminApiException(error: unknown, url: string): Error {

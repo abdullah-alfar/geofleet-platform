@@ -29,7 +29,7 @@ app/
     index.vue                 Redirects to /dashboard
     dashboard.vue              GET /dashboard/summary + /dashboard/regions
     drivers/index.vue          GET /drivers, filtered + cursor-paginated
-    drivers/[id].vue           GET /drivers/:id + suspend command
+    drivers/[id].vue           GET /drivers/:id + approve/suspend/unsuspend/disable commands
     rides/index.vue            GET /rides, filtered + cursor-paginated
     rides/[id].vue             GET /rides/:id (+ timeline) + GET /rides/:id/offers
     trips/index.vue            GET /trips, filtered + cursor-paginated
@@ -37,17 +37,18 @@ app/
     payments/index.vue         GET /payments, filtered + cursor-paginated
     payments/[id].vue          GET /payments/:id + refund command
     realtime.vue                Live driver map (SVG scatter, no map SDK), live counters, incident feed — polled, not pushed
+    admins/index.vue            GET /admins + role-change/deactivate — super_admin-only, hides controls for the caller's own row
   components/
-    CommandButton.vue          Shared "click -> optional reason -> confirm" pattern for suspend/cancel/refund
+    CommandButton.vue          Shared "click -> optional reason -> confirm" pattern for suspend/cancel/refund/etc.
     DriverMap.vue               Auto-fit SVG scatter plot of live driver positions
   composables/
     useAdminApi.ts              The only place any call to admin-api is made — base URL, bearer token, error normalization, global 401 handling
     usePaginatedList.ts          Wraps a cursor-paginated GET — reactive query, refresh()/loadMore(), never an OFFSET
-    useAdminCommand.ts           Wraps a POST command endpoint — pending/error state
+    useAdminCommand.ts           Wraps a POST command endpoint — pending/error state; run() for {reason}-only bodies, runWithBody() for extras (e.g. admin_role)
   stores/auth.ts                Pinia — token (persisted to localStorage), admin identity (re-derived from /session on every boot, never persisted)
   middleware/auth.global.ts     Redirects unauthenticated requests to /login, authenticated requests away from /login
   plugins/auth.client.ts        Restores the token and verifies it against /session before the app mounts
-  types/                        Hand-mirrored copies of admin-api's own response shapes (api.ts, driver.ts, ride.ts, trip.ts, payment.ts, realtime.ts, dashboard.ts)
+  types/                        Hand-mirrored copies of admin-api's own response shapes (api.ts, driver.ts, ride.ts, trip.ts, payment.ts, realtime.ts, dashboard.ts, admin-account.ts)
 ```
 
 ## Running locally

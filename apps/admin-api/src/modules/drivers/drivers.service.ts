@@ -136,15 +136,17 @@ export class DriversService {
    * mutation (drivers.status, is_available, audit log, outbox event) all
    * happen there. See docs/admin-api/laravel-integration.md.
    */
-  async suspend(
+  suspend(
     driverId: string,
     admin: AdminPrincipal,
     reason: string | undefined,
     correlationId: string | undefined,
   ): Promise<Record<string, unknown>> {
-    return this.coreApi.patch(
-      `/api/internal/v1/drivers/${driverId}/suspend`,
-      { admin_user_id: admin.userId, reason },
+    return this.forwardCommand(
+      driverId,
+      'suspend',
+      admin,
+      reason,
       correlationId,
     );
   }
@@ -154,14 +156,70 @@ export class DriversService {
    * path in the platform that moves a driver out of `pending_review`.
    * See docs/admin-api/laravel-integration.md.
    */
-  async approve(
+  approve(
     driverId: string,
     admin: AdminPrincipal,
     reason: string | undefined,
     correlationId: string | undefined,
   ): Promise<Record<string, unknown>> {
+    return this.forwardCommand(
+      driverId,
+      'approve',
+      admin,
+      reason,
+      correlationId,
+    );
+  }
+
+  /**
+   * Forwards to core-api's internal/v1/drivers/{id}/unsuspend — the
+   * inverse of suspend(), restores `active` standing.
+   */
+  unsuspend(
+    driverId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    return this.forwardCommand(
+      driverId,
+      'unsuspend',
+      admin,
+      reason,
+      correlationId,
+    );
+  }
+
+  /**
+   * Forwards to core-api's internal/v1/drivers/{id}/disable — a harder,
+   * intended-as-more-permanent counterpart to suspend().
+   */
+  disable(
+    driverId: string,
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
+    return this.forwardCommand(
+      driverId,
+      'disable',
+      admin,
+      reason,
+      correlationId,
+    );
+  }
+
+  /** All four driver commands share this exact request shape — only the
+   * path segment differs. */
+  private forwardCommand(
+    driverId: string,
+    action: 'approve' | 'suspend' | 'unsuspend' | 'disable',
+    admin: AdminPrincipal,
+    reason: string | undefined,
+    correlationId: string | undefined,
+  ): Promise<Record<string, unknown>> {
     return this.coreApi.patch(
-      `/api/internal/v1/drivers/${driverId}/approve`,
+      `/api/internal/v1/drivers/${driverId}/${action}`,
       { admin_user_id: admin.userId, reason },
       correlationId,
     );

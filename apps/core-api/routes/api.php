@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Internal\V1\AdminAccountController;
 use App\Http\Controllers\Api\Internal\V1\DriverCommandController;
 use App\Http\Controllers\Api\Internal\V1\PaymentCommandController;
 use App\Http\Controllers\Api\Internal\V1\TripCommandController;
@@ -77,4 +78,8 @@ Route::prefix('internal/v1')->name('api.internal.v1.')->middleware('internal-ser
     Route::patch('drivers/{driver:uuid}/disable', [DriverCommandController::class, 'disable'])->name('drivers.disable');
     Route::patch('trips/{trip:uuid}/cancel', [TripCommandController::class, 'cancel'])->name('trips.cancel');
     Route::patch('payments/{payment:uuid}/refund', [PaymentCommandController::class, 'refund'])->name('payments.refund');
+
+    Route::get('admins', [AdminAccountController::class, 'index'])->name('admins.index');
+    Route::patch('admins/{admin:uuid}/role', [AdminAccountController::class, 'updateRole'])->name('admins.update-role');
+    Route::patch('admins/{admin:uuid}/deactivate', [AdminAccountController::class, 'deactivate'])->name('admins.deactivate');
 });
