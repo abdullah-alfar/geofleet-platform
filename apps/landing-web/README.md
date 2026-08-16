@@ -71,12 +71,15 @@ Open http://localhost:3002.
 
 ## A content note
 
-The "Behind the Experience" and "Event-Driven by Design" sections describe
-the platform's Kafka-based event flow, including an admin-facing Kafka
-projection consumer. That reflects this repository's architecture as
-originally specified. **admin-api's own Kafka projection was since removed**
-in favor of reading core-api directly (see
-[docs/admin-api/query-apis.md](../../docs/admin-api/query-apis.md)) — the
-rest of the event-driven flow (outbox → Kafka → location/dispatch/realtime-
-gateway) is still accurate. Worth reconciling if this page is meant to track
-the platform's current state exactly rather than its original design.
+"Behind the Experience" and "Event-Driven by Design" match the platform's
+current architecture, not its original design. `admin-api` doesn't consume
+Kafka — it reads and writes through core-api's own internal API directly
+(see [docs/admin-api/query-apis.md](../../docs/admin-api/query-apis.md)) —
+so the diagram shows that as a separate "direct HTTP, not Kafka" path off
+`Laravel 13 Core API`, distinct from the three real Kafka consumers (Go
+Location, Go Dispatch, Realtime Gateway). The event-flow story below it
+lists `driver.location.validated.v1`'s three actual consumers — Realtime
+Gateway (live relay), Dispatch Service (driver geohash index), and core-api
+itself (durable trip-route history) — per
+[docs/events/topic-catalog.md](../../docs/events/topic-catalog.md), not the
+admin projection this section originally described before that was removed.

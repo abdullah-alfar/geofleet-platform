@@ -4,13 +4,13 @@ const isInView = useInView(rootEl, { once: false, threshold: 0.25 });
 const prefersReduced = useReducedMotion();
 const flowActive = computed(() => isInView.value && !prefersReduced.value);
 
-const consumers = ['Realtime Gateway', 'Admin Projection', 'History Consumer'];
+const consumers = ['Realtime Gateway', 'Dispatch Service', 'Core API · history'];
 </script>
 
 <template>
   <section ref="rootEl" class="bg-bg py-28">
     <div class="mx-auto max-w-4xl px-6">
-      <SectionHeading eyebrow="Event-Driven by Design" title="One event, four systems, zero tight coupling." />
+      <SectionHeading eyebrow="Event-Driven by Design" title="One event, three systems, zero tight coupling." />
 
       <Reveal :delay="100" class="mt-8 flex justify-center">
         <code class="rounded-full border border-line bg-bg-elevated/60 px-4 py-1.5 text-sm text-cyan">
@@ -46,8 +46,8 @@ const consumers = ['Realtime Gateway', 'Admin Projection', 'History Consumer'];
 
       <Reveal :delay="240">
         <p class="mx-auto mt-10 max-w-xl text-center text-ink-dim">
-          One GPS update can power live tracking, dispatch, operations, and analytics — without those systems ever
-          calling each other directly.
+          One GPS update simultaneously refreshes the live map, updates dispatch's driver index, and extends the
+          trip's durable route history — without those three systems ever calling each other directly.
         </p>
       </Reveal>
     </div>

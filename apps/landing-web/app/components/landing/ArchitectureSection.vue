@@ -8,7 +8,6 @@ const branches = [
   { name: 'Go Location', sink: 'Redis' },
   { name: 'Go Dispatch', sink: 'PostgreSQL + PostGIS' },
   { name: 'Realtime Gateway', sink: 'WebSockets' },
-  { name: 'NestJS Admin API', sink: 'Nuxt 4 Admin Dashboard' },
 ];
 
 const services = [
@@ -37,7 +36,7 @@ const services = [
     name: 'NestJS Admin API',
     owns: ['Admin BFF', 'Operational query aggregation', 'Command forwarding to core-api', 'Live driver/region views'],
     reason:
-      "Keeps the admin surface's read/write patterns isolated from the core rider/driver API, without owning core business data itself.",
+      "Reads and writes through core-api's own internal API synchronously — no Kafka, no projection lag. Admin traffic is low-volume enough that a direct call is simpler than an eventually-consistent read model.",
   },
 ];
 </script>
@@ -48,7 +47,7 @@ const services = [
       <SectionHeading
         eyebrow="Behind the Experience"
         title="A simple ride on the surface. A distributed system underneath."
-        subtitle="Every screen in the demo above is backed by a real event-driven architecture — five independently deployable services, one event bus."
+        subtitle="Every screen in the demo above is backed by a real event-driven architecture — four services on one event bus, plus an admin surface that reads the core API directly instead."
       />
 
       <Reveal :delay="120" class="mt-16 rounded-3xl border border-line bg-bg/60 p-6 sm:p-10">
@@ -64,16 +63,16 @@ const services = [
         </div>
 
         <!-- Fan-out manifold -->
-        <div class="relative mx-auto hidden max-w-4xl sm:block">
+        <div class="relative mx-auto hidden max-w-2xl sm:block">
           <div class="h-px bg-line" />
-          <div class="grid grid-cols-4">
+          <div class="grid grid-cols-3">
             <div v-for="(b, i) in branches" :key="b.name" class="relative mx-auto">
               <FlowConnector :active="flowActive" :delay="0.9 + i * 0.15" height="1.5rem" />
             </div>
           </div>
         </div>
 
-        <div class="mx-auto grid max-w-4xl grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4">
+        <div class="mx-auto grid max-w-2xl grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
           <div v-for="(b, i) in branches" :key="b.name" class="flex flex-col items-center text-center">
             <ArchNode :label="b.name" compact />
             <FlowConnector :active="flowActive" :delay="1.2 + i * 0.15" />
@@ -82,7 +81,31 @@ const services = [
         </div>
       </Reveal>
 
-      <Reveal :delay="200" class="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Admin path: synchronous HTTP off core-api, deliberately not on the Kafka bus above -->
+      <Reveal :delay="160" class="mt-8 rounded-3xl border border-line bg-bg/60 p-6 sm:p-8">
+        <p class="mb-6 text-center text-xs font-semibold tracking-[0.2em] text-ink-faint uppercase">
+          Admin path — direct HTTP, not Kafka
+        </p>
+        <div class="mx-auto flex max-w-xs flex-col items-center text-center sm:max-w-none sm:flex-row sm:justify-center sm:gap-0">
+          <ArchNode label="Laravel 13 Core API" accent compact />
+          <div class="flex flex-col items-center sm:mx-4">
+            <FlowConnector :active="flowActive" :delay="0" height="1.25rem" class="sm:hidden" />
+            <span class="hidden text-[10px] whitespace-nowrap text-ink-faint sm:block">internal/v1 API →</span>
+          </div>
+          <ArchNode label="NestJS Admin API" compact />
+          <div class="flex flex-col items-center sm:mx-4">
+            <FlowConnector :active="flowActive" :delay="0.2" height="1.25rem" class="sm:hidden" />
+            <span class="hidden text-[10px] whitespace-nowrap text-ink-faint sm:block">→</span>
+          </div>
+          <ArchNode label="Nuxt 4 Admin Dashboard" compact subtle />
+        </div>
+        <p class="mx-auto mt-6 max-w-lg text-center text-xs leading-relaxed text-ink-faint">
+          Admin traffic isn't heavy enough to justify the eventual-consistency trade-off a Kafka-projected read
+          model buys — so this path reads and writes through core-api's own API directly instead.
+        </p>
+      </Reveal>
+
+      <Reveal :delay="220" class="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="svc in services" :key="svc.name" class="rounded-2xl border border-line bg-bg-elevated/40 p-5">
           <h4 class="font-display text-sm font-semibold text-ink">{{ svc.name }}</h4>
           <ul class="mt-3 space-y-1">
