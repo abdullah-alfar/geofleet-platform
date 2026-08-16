@@ -37,6 +37,7 @@ apps/
   realtime-gateway/    Go 1.26.3 — WebSockets, fan-out (Phase 6)
   admin-api/           NestJS 11 — Admin BFF: read models + command forwarding (additive, see docs/admin-api/)
   admin-web/           Nuxt 4 — Admin dashboard UI, calls admin-api (additive, see apps/admin-web/README.md)
+  landing-web/         Nuxt 4 — Public marketing/portfolio site, no backend calls (additive, see apps/landing-web/README.md)
 contracts/
   events/               Event schemas shared across services
   openapi/              REST API specification

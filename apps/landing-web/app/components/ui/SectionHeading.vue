@@ -6,7 +6,7 @@ withDefaults(
     subtitle?: string;
     align?: 'left' | 'center';
   }>(),
-  { align: 'center' },
+  { align: 'center', eyebrow: '', subtitle: '' },
 );
 </script>
 
