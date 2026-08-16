@@ -56,7 +56,10 @@ scripts/                 Local developer tooling
 
 ## Quick start (local infrastructure only)
 
-Requires Docker and Docker Compose.
+Requires Docker and Docker Compose. Don't want to use Docker? See
+[docs/local-development-without-docker.md](docs/local-development-without-docker.md)
+for running every piece of infrastructure and every service natively
+instead.
 
 ```bash
 cp .env.example .env

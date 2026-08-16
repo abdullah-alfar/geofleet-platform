@@ -50,7 +50,6 @@ func deviceAuthMiddleware(authenticator DeviceAuthenticator, m *metrics.Metrics,
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, ok := bearerToken(r)
-			logger.Info("token", token)
 			if !ok {
 				m.AuthFailures.Inc()
 				writeError(w, http.StatusUnauthorized, "missing_or_malformed_authorization", "expected 'Authorization: Bearer <device_token>'")
