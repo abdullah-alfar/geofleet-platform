@@ -161,7 +161,6 @@ service connects with).
 ```bash
 cd apps/location-service
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
 go run ./cmd/location-service
 ```
 
@@ -179,7 +178,6 @@ real driver location data to match against.
 ```bash
 cd apps/dispatch-service
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
 go run ./cmd/dispatch-service
 ```
 
@@ -198,7 +196,6 @@ ride-lifecycle events to relay.
 ```bash
 cd apps/realtime-gateway
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
 go run ./cmd/realtime-gateway
 ```
 

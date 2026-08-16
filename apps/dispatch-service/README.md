@@ -98,9 +98,10 @@ match against).
 ```bash
 cd apps/dispatch-service
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
 go run ./cmd/dispatch-service
 ```
+
+`.env` loads automatically via `godotenv` at startup (see `cmd/dispatch-service/main.go`) — no `export` step needed.
 
 ## Manual verification
 

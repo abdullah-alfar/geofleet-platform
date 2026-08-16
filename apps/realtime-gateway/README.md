@@ -80,9 +80,10 @@ running so there are ride-lifecycle events to relay.
 ```bash
 cd apps/realtime-gateway
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
 go run ./cmd/realtime-gateway
 ```
+
+`.env` loads automatically via `godotenv` at startup (see `cmd/realtime-gateway/main.go`) — no `export` step needed.
 
 ## Manual verification
 

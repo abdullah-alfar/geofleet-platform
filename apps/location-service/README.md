@@ -81,9 +81,10 @@ repo root) and the Phase 2 migrations applied (including the
 ```bash
 cd apps/location-service
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
 go run ./cmd/location-service
 ```
+
+`.env` loads automatically via `godotenv` at startup (see `cmd/location-service/main.go`) — no `export` step needed.
 
 ## Manual verification
 

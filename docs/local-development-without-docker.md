@@ -5,12 +5,12 @@ for Postgres/Redis/Kafka. This document is the alternative for developers
 who want (or need) to run every piece of infrastructure and every service
 natively on their own machine — no `docker-compose.yml` involved anywhere.
 
-The approach: install Postgres/Redis/Kafka natively but configure them to
-listen on the **exact same ports** `docker-compose.yml` maps them to on the
-host (`55432`, `63790`, `9094`). Every service's `.env.example` already
-points at those ports, so you copy each `.env.example` unmodified — nothing
-in `apps/*` needs to know whether the thing on the other end of the
-connection is a container or a native process.
+The approach: install Postgres/Redis/Kafka natively on their **standard
+default ports** (`5432`, `6379`, `9092`) rather than the non-standard ports
+`docker-compose.yml` maps them to on the host (`55432`, `63790`, `9094`).
+Every service's `.env.example` ships with those Docker-mapped ports baked
+in, so after `cp .env.example .env` for each app, a one-line `sed` swaps
+them for the defaults — shown at each step below.
 
 Tested against Ubuntu/Debian (`apt`). The package names differ on other
 distributions, but the Postgres/Redis/Kafka configuration itself is
@@ -49,26 +49,18 @@ echo "extension=rdkafka.so" | sudo tee /etc/php/8.4/cli/conf.d/20-rdkafka.ini
 php -m | grep rdkafka   # confirm it loaded
 ```
 
-## 2. Infrastructure — Postgres, Redis, Kafka, all native
+## 2. Infrastructure — Postgres, Redis, Kafka, all on default ports
 
 ### Postgres + PostGIS
 
-Point Postgres at port `55432` instead of the default `5432` — this is the
-only infra config change needed anywhere, and it's what lets every app's
-`.env.example` work unmodified (they all already say `DB_PORT=55432`,
-mirroring `docker-compose.yml`'s host mapping).
+Nothing to reconfigure — `postgresql-16` already listens on the standard
+`5432`. Create the role, database, and PostGIS extensions (as the
+`postgres` superuser — this mirrors what
+`infrastructure/postgres/init/001-extensions.sql` does automatically
+inside the Postgres container on first boot):
 
 ```bash
-sudo sed -i "s/^port = .*/port = 55432/" /etc/postgresql/16/main/postgresql.conf
-sudo systemctl restart postgresql
-```
-
-Create the role, database, and PostGIS extensions (as the `postgres`
-superuser — this mirrors what `infrastructure/postgres/init/001-extensions.sql`
-does automatically inside the Postgres container on first boot):
-
-```bash
-sudo -u postgres psql -p 55432 <<'SQL'
+sudo -u postgres psql <<'SQL'
 CREATE ROLE core_api WITH LOGIN CREATEROLE PASSWORD 'change_me_local_dev';
 CREATE DATABASE core_api OWNER core_api;
 \c core_api
@@ -86,18 +78,19 @@ You never create those four roles by hand.
 
 ### Redis
 
-Run a dedicated instance on `63790` with a password, separate from any
-other Redis you might already have on the default port:
+The `redis-server` package already listens on the standard `6379`. Every
+app's `.env.example` still expects a password on that connection, so set
+one:
 
 ```bash
-redis-server --port 63790 --requirepass change_me_local_dev --daemonize no
+if grep -q "^requirepass" /etc/redis/redis.conf; then
+  sudo sed -i "s/^requirepass.*/requirepass change_me_local_dev/" /etc/redis/redis.conf
+else
+  echo "requirepass change_me_local_dev" | sudo tee -a /etc/redis/redis.conf
+fi
+sudo systemctl restart redis-server
+redis-cli -a change_me_local_dev ping   # PONG
 ```
-
-Leave that running in its own terminal (or `--daemonize yes` if you'd
-rather not dedicate a terminal to it). `infrastructure/redis/redis.conf`
-has the project's fuller local-dev config (AOF persistence, 256mb
-maxmemory, allkeys-lru) if you want to pass `--include` that file too —
-optional, the defaults are fine for local dev.
 
 ### Kafka (KRaft mode, single node)
 
@@ -110,16 +103,16 @@ sudo tar -xzf /tmp/kafka.tgz -C /opt
 sudo ln -s /opt/kafka_2.13-3.9.0 /opt/kafka
 ```
 
-Write a local KRaft config listening on `9094` (matching every service's
-`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`):
+Write a local KRaft config on Kafka's own conventional default ports —
+`9092` for the broker, `9093` for the controller:
 
 ```bash
 cat > /opt/kafka/config/server-local.properties <<'EOF'
 process.roles=broker,controller
 node.id=1
 controller.quorum.voters=1@localhost:9093
-listeners=PLAINTEXT://:9094,CONTROLLER://:9093
-advertised.listeners=PLAINTEXT://127.0.0.1:9094
+listeners=PLAINTEXT://:9092,CONTROLLER://:9093
+advertised.listeners=PLAINTEXT://127.0.0.1:9092
 controller.listener.names=CONTROLLER
 listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
 log.dirs=/opt/kafka/data
@@ -134,30 +127,35 @@ KAFKA_CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
 /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server-local.properties
 ```
 
-Leave that running in its own terminal too. In a new terminal, create the
+Leave that running in its own terminal. In a new terminal, create the
 platform's topic catalog using the repo's own script — this is the same
 script `docker-compose.yml`'s `kafka-init` service runs, just pointed at
 the native broker instead:
 
 ```bash
 cd /var/www/html/geofleet-platform
-KAFKA_BOOTSTRAP_SERVER=127.0.0.1:9094 bash infrastructure/kafka/init-topics.sh
+KAFKA_BOOTSTRAP_SERVER=127.0.0.1:9092 bash infrastructure/kafka/init-topics.sh
 ```
 
 ### Verify infrastructure is up
 
 ```bash
-psql -h 127.0.0.1 -p 55432 -U core_api -d core_api -c "SELECT postgis_full_version();"
-redis-cli -p 63790 -a change_me_local_dev ping
-/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9094 --list
+psql -h 127.0.0.1 -p 5432 -U core_api -d core_api -c "SELECT postgis_full_version();"
+redis-cli -a change_me_local_dev ping
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list
 ```
 
 ## 3. core-api (Laravel)
+
+`.env.example` ships with the Docker-mapped ports — swap them for the
+defaults from step 2 (this exact three-value swap is repeated for every
+app below, since they all inherited the same convention):
 
 ```bash
 cd apps/core-api
 composer install
 cp .env.example .env
+sed -i -e 's/55432/5432/g' -e 's/63790/6379/g' -e 's/9094/9092/g' .env
 php artisan key:generate
 php artisan migrate          # also creates the 4 least-privilege roles above
 php artisan admin:create you@example.com "Your Name" super_admin --password=ChangeMe123
@@ -194,31 +192,41 @@ role each service connects with). Run in this order — each is more useful
 with the previous one already generating real data, though none of them
 hard-fail without it.
 
+Each service loads its own `.env` automatically via `godotenv` at
+startup (see e.g. `apps/location-service/cmd/location-service/main.go`) —
+just `cp` and edit it, no `export` step needed:
+
 ```bash
 # location-service
 cd apps/location-service
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
+sed -i -e 's/55432/5432/g' -e 's/63790/6379/g' -e 's/9094/9092/g' .env
 go run ./cmd/location-service
 
 # dispatch-service (new terminal)
 cd apps/dispatch-service
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
+sed -i -e 's/55432/5432/g' -e 's/63790/6379/g' -e 's/9094/9092/g' .env
 go run ./cmd/dispatch-service
 
 # realtime-gateway (new terminal)
 cd apps/realtime-gateway
 cp .env.example .env
-export $(grep -v '^#' .env | xargs)
+sed -i -e 's/55432/5432/g' -e 's/63790/6379/g' -e 's/9094/9092/g' .env
 go run ./cmd/realtime-gateway
 ```
+
+If you ever see `No .env file found, using system environment` in a
+service's startup log, it means `.env` isn't in the working directory you
+ran `go run` from — `godotenv.Load()` looks in the current directory, not
+next to `main.go`.
 
 ## 5. admin-api (NestJS)
 
 ```bash
 cd apps/admin-api
 cp .env.example .env
+sed -i -e 's/55432/5432/g' -e 's/63790/6379/g' .env
 npm install
 npm run start:dev
 ```
@@ -238,6 +246,8 @@ npm install
 npm run dev
 ```
 
+No port changes needed here — `.env.example` only points at admin-api
+(`:3001`) and core-api (`:8000`), both application ports, not infra ones.
 Open http://localhost:3000, log in with the account `admin:create` made in
 step 3.
 
@@ -298,13 +308,9 @@ each one. For the infrastructure:
 # Ctrl+C the kafka-server-start.sh terminal, or:
 /opt/kafka/bin/kafka-server-stop.sh
 
-# Redis
-# Ctrl+C the redis-server terminal, or if daemonized:
-redis-cli -p 63790 -a change_me_local_dev shutdown
-
-# Postgres — leave running (it's a systemd-managed system service, not
-# something this project started); or `sudo systemctl stop postgresql`
-# if you want it fully down.
+# Redis and Postgres are systemd-managed system services, not something
+# this project started — leave them running, or:
+sudo systemctl stop redis-server postgresql
 ```
 
 ## Troubleshooting
@@ -325,5 +331,9 @@ redis-cli -p 63790 -a change_me_local_dev shutdown
   `.env`) — see the comments in each `.env.example` for exactly which
   pairs must match.
 - **Port already in use** — something else on your machine is already on
-  `55432`/`63790`/`9094`/`8000`/`3000`/`3001`/`3002`/`8081`/`8082`/`8083`.
-  `ss -tlnp | grep <port>` to find what.
+  `5432`/`6379`/`9092`/`8000`/`3000`/`3001`/`3002`/`8081`/`8082`/`8083`.
+  Common if you already run Postgres/Redis for other projects — either
+  stop those first, or point this platform's `.env` files at different
+  ports instead of the defaults (the `sed` commands above are just find
+  hardcoded values, so any consistent port choice works). `ss -tlnp | grep
+  <port>` to find what's already listening.
