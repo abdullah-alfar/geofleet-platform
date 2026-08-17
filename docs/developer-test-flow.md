@@ -50,6 +50,33 @@ Run `00-health-check.sh` (see Part 2) — every line should be green
 `2xx`. If anything is red, that's the service to go start; the script
 tells you which terminal command starts it.
 
+### A note on timezones — two conventions, both correct
+
+core-api's `APP_TIMEZONE` (`apps/core-api/.env`) can be set to whatever
+you want — it drives both PHP's clock and the Postgres session together
+(`config/app.php`, `config/database.php`'s `pgsql.timezone`), so they
+can't drift apart from each other. This environment currently runs
+`Asia/Amman`. That setting changes **raw Postgres rows only** — every
+HTTP response every script in this kit reads is unaffected, because
+Laravel's JSON serialization (`Carbon::toJSON()`) always normalizes to
+UTC on the way out, regardless of `APP_TIMEZONE`. Confirmed live, same
+row, both ends:
+
+| Where you're looking | Value | Timezone |
+|---|---|---|
+| JSON API response (`req`'s output, every script) | `2026-08-17T11:13:09.000000Z` | always UTC |
+| Raw `psql` query on the same row | `2026-08-17 14:13:09+03` | `APP_TIMEZONE` (Amman) |
+
+So: nothing in `scripts/api-test/` needs adjusting for this, ever — GPS
+timestamps (`08`'s `RECORDED_AT`) already use `date -u` explicitly,
+uniqueness stamps use epoch seconds, and Kafka event envelopes
+(`occurred_at`) are always UTC-with-`Z` by convention regardless of any
+service's local config. The only place the two conventions can collide
+is if you go around the API and query Postgres directly mid-debug (as
+the stale-GPS investigation above did) — a `psql` row's timestamp will
+be in local Amman time while everything printed by the scripts stays
+UTC. Both are correct; they're just not the same clock.
+
 ## Part 2 — Test: scripts/api-test, in order
 
 Each script prints a `step` banner naming the exact source file/method

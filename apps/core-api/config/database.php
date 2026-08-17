@@ -97,6 +97,12 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Must match config('app.timezone') — see that file's comment.
+            // Without this, the connection falls back to Postgres's own
+            // server default (whatever the OS timezone is), which is very
+            // unlikely to match PHP's, and every naive timestamp Laravel
+            // writes gets silently reinterpreted with the wrong offset.
+            'timezone' => env('APP_TIMEZONE', 'UTC'),
         ],
 
         'sqlsrv' => [

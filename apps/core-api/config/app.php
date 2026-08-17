@@ -63,9 +63,19 @@ return [
     | will be used by the PHP date and date-time functions. The timezone
     | is set to "UTC" by default as it is suitable for most use cases.
     |
+    | This MUST stay in sync with the pgsql connection's 'timezone' setting
+    | in config/database.php — both read the same APP_TIMEZONE env var for
+    | exactly that reason. If they disagree, Postgres silently reinterprets
+    | every naive timestamp Laravel writes (created_at, published_at, ...)
+    | using its own session timezone instead of PHP's, shifting the stored
+    | instant by the offset between the two — a real data bug, not a
+    | display quirk. See docs/events/event-envelope.md: every event on the
+    | wire is UTC (occurred_at ends in "Z"), so UTC is the value every
+    | other service in this platform already assumes.
+    |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
