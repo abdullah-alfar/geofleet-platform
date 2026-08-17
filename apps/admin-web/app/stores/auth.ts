@@ -9,11 +9,6 @@ export interface AdminIdentity {
 
 const STORAGE_KEY = 'admin-web:token';
 
-interface LoginResponse {
-  data: { role: string };
-  meta: { token: string };
-}
-
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: null as string | null,
@@ -51,39 +46,31 @@ export const useAuthStore = defineStore('auth', {
       this.admin = admin;
     },
 
-    /** Admins log in through core-api's shared POST /api/v1/auth/login —
-     * the same endpoint customers/drivers use, not a separate admin
-     * identity system (see docs/decisions/0009-admin-identity.md). Then
-     * immediately verifies the token against admin-api's own /session —
-     * cheap, and fails fast here rather than on the first dashboard
-     * fetch if admin-api can't actually verify it (e.g. a misconfigured
-     * shared Postgres connection between the two services). */
+    /** Admins log in through admin-api's own POST /api/v1/admin/auth/login
+     * — admin-api verifies the password and mints its own session token directly
+     * (see docs/decisions/0011-admin-api-independent-service.md); no
+     * call to core-api at all anymore. Then immediately verifies the
+     * token against admin-api's own /session — cheap, and fails fast
+     * here rather than on the first dashboard fetch if something's
+     * wrong with the freshly-issued token. */
     async login(email: string, password: string): Promise<void> {
-      const config = useRuntimeConfig();
+      const api = useAdminApi();
 
-      let response: LoginResponse;
+      let response: { token: string };
       try {
-        response = await $fetch<LoginResponse>('/api/v1/auth/login', {
-          baseURL: config.public.coreApiBaseUrl,
-          method: 'POST',
-          body: { email, password },
+        response = await api.post<{ token: string }>('/api/v1/admin/auth/login', {
+          email,
+          password,
         });
       } catch (error) {
         throw toApiError(error);
       }
 
-      if (response.data.role !== 'admin') {
-        throw new Error(
-          'This account is not an admin account — customer/driver logins are not accepted here.',
-        );
-      }
-
-      this.token = response.meta.token;
+      this.token = response.token;
       if (import.meta.client) {
         localStorage.setItem(STORAGE_KEY, this.token);
       }
 
-      const api = useAdminApi();
       this.admin = await api.get<AdminIdentity>('/api/v1/admin/session');
     },
 

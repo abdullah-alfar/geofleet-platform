@@ -4,15 +4,13 @@ import type { Pool } from 'pg';
 import { PG_POOL } from '../../integrations/postgres/postgres.module';
 import { AdminPrincipal } from './admin-principal.interface';
 
-interface TokenRow {
-  token: string;
-  tokenable_type: string;
-  abilities: string | null;
+interface SessionRow {
+  token_hash: string;
+  admin_role: string;
+  abilities: string[];
   expires_at: string | null;
   user_uuid: string;
   user_status: string;
-  user_role: string;
-  admin_role: string | null;
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -28,12 +26,17 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Verifies a Sanctum bearer token directly against Postgres — the same
- * algorithm Laravel Sanctum's own PersonalAccessToken::findToken() uses
- * (split "{id}|{plaintext}", hash the plaintext, constant-time compare
- * against the stored hash), and the same pattern realtime-gateway already
- * applies for customer/driver tokens (ADR 0006). No call back into
- * core-api. See docs/decisions/0009-admin-identity.md.
+ * Verifies an admin-api session token directly against Postgres —
+ * admin_sessions, admin-api's own table (see
+ * docs/decisions/0011-admin-api-independent-service.md), not core-api's
+ * Sanctum personal_access_tokens anymore. Same "split id|plaintext, hash
+ * the plaintext, constant-time compare" shape this service already used
+ * before, and the same shape personal_access_tokens/driver_devices use
+ * elsewhere in this platform — only the table changed.
+ *
+ * `users.status` is joined and checked on every call, not just at login
+ * — this is what makes admin_account.deactivate take effect immediately
+ * on the next request, not just the next login.
  */
 @Injectable()
 export class TokenVerificationService {
@@ -51,45 +54,40 @@ export class TokenVerificationService {
       return null;
     }
 
-    const { rows } = await this.pool.query<TokenRow>(
-      `SELECT pat.token, pat.tokenable_type, pat.abilities, pat.expires_at,
-              u.uuid AS user_uuid, u.status AS user_status, u.role AS user_role,
-              a.admin_role
-       FROM personal_access_tokens pat
-       JOIN users u ON u.id = pat.tokenable_id
-       LEFT JOIN admins a ON a.user_id = u.id
-       WHERE pat.id = $1`,
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT s.token_hash, s.admin_role, s.abilities, s.expires_at,
+              u.uuid AS user_uuid, u.status AS user_status
+       FROM admin_sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.id = $1`,
       [id],
     );
 
     const row = rows[0];
-    if (!row || row.tokenable_type !== 'App\\Models\\User') {
+    if (!row) {
       return null;
     }
 
+    // Deliberately not filtered by token_hash in the WHERE clause above
+    // — comparing it here, in application code, with a constant-time
+    // compare avoids Postgres's own (non-constant-time) string equality
+    // check from becoming a timing side-channel.
     const computedHash = createHash('sha256').update(plaintext).digest('hex');
-    if (!constantTimeEqual(row.token, computedHash)) {
+    if (!constantTimeEqual(row.token_hash, computedHash)) {
       return null;
     }
 
     if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
       return null;
     }
-    if (row.user_status !== 'active' || row.user_role !== 'admin') {
-      return null;
-    }
-    // Provisioned only by `php artisan admin:create`, which creates the
-    // user and admins rows in one transaction — a role='admin' user with
-    // no admins row is a data-integrity anomaly, not a valid session.
-    // Fails closed rather than authenticating into a zero-ability session.
-    if (!row.admin_role) {
+    if (row.user_status !== 'active') {
       return null;
     }
 
-    const abilities: string[] = row.abilities
-      ? (JSON.parse(row.abilities) as string[])
-      : [];
-
-    return { userId: row.user_uuid, adminRole: row.admin_role, abilities };
+    return {
+      userId: row.user_uuid,
+      adminRole: row.admin_role,
+      abilities: row.abilities,
+    };
   }
 }

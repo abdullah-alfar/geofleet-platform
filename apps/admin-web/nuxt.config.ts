@@ -32,14 +32,10 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       // Overridable via NUXT_PUBLIC_ADMIN_API_BASE_URL — see .env.example.
-      // Everything except login goes here.
+      // Every request this app makes goes here, including login —
+      // admin-api is now fully independent of core-api (see
+      // docs/decisions/0011-admin-api-independent-service.md).
       adminApiBaseUrl: 'http://localhost:3001',
-      // Overridable via NUXT_PUBLIC_CORE_API_BASE_URL. Admins log in
-      // through core-api's shared POST /api/v1/auth/login (same endpoint
-      // customers/drivers use — see ADR 0009, no separate admin identity
-      // system) — the *only* call this app ever makes to core-api
-      // directly. Every other request goes to admin-api.
-      coreApiBaseUrl: 'http://localhost:8000',
     },
   },
 });
