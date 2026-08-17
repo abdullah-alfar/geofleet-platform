@@ -59,7 +59,9 @@ scripts/                 Local developer tooling
 Requires Docker and Docker Compose. Don't want to use Docker? See
 [docs/local-development-without-docker.md](docs/local-development-without-docker.md)
 for running every piece of infrastructure and every service natively
-instead.
+instead. Once everything's running, [docs/developer-test-flow.md](docs/developer-test-flow.md)
+walks through exercising the whole platform end-to-end with
+[scripts/api-test/](scripts/api-test/), stating what to expect at each step.
 
 ```bash
 cp .env.example .env

@@ -10,6 +10,11 @@ fires — so you run the script, then go read that file.
 No extra tools to install — just `curl`, `jq`, `bash`, and (only for
 15) the `websocket-client` Python package.
 
+New here? [docs/developer-test-flow.md](../../docs/developer-test-flow.md)
+walks through every script below in order, from a cold environment,
+stating exactly what to expect at each step (including which failures
+are actually expected negative-test behavior, not bugs).
+
 ## Quick start
 
 ```bash
