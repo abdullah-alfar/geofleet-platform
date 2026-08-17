@@ -18,6 +18,18 @@ interface AdminRow {
 }
 
 /**
+ * Laravel/PHP tags its bcrypt hashes `$2y$`; Node's `bcrypt` package only
+ * recognizes `$2a$`/`$2b$`. Both are the byte-identical "fixed" bcrypt
+ * variant — `$2y$` is PHP's own historical name for the same thing `$2b$`
+ * denotes everywhere else — so renaming the tag is safe and standard
+ * interop practice, not a weakened check. Confirmed empirically: without
+ * this, every correct password fails to verify.
+ */
+function normalizeBcryptHash(hash: string): string {
+  return hash.startsWith('$2y$') ? '$2b$' + hash.slice(4) : hash;
+}
+
+/**
  * admin-api's own login — replaces the old flow of calling core-api's
  * POST /api/v1/auth/login and trusting its Sanctum token. Verifies
  * `users.password` (bcrypt, same hash core-api's own AuthController
@@ -44,9 +56,10 @@ export class AdminAuthService {
     // fixed dummy hash — otherwise a missing-email response returns
     // faster than a wrong-password one, a timing side-channel that
     // leaks which emails exist.
-    const hashToCompare =
+    const hashToCompare = normalizeBcryptHash(
       user?.password ??
-      '$2b$12$CwTycUXWue0Thq9StjUM0uJ8i6mS/GJXbaJHrpwHmKf.i1sZDwUeS';
+        '$2b$12$CwTycUXWue0Thq9StjUM0uJ8i6mS/GJXbaJHrpwHmKf.i1sZDwUeS',
+    );
     const passwordMatches = await bcrypt.compare(password, hashToCompare);
 
     if (!user || !passwordMatches) {

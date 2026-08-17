@@ -1,5 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { PaginationQueryDto } from '../../../common/pagination/pagination-query.dto';
 
 export class ListRidesDto extends PaginationQueryDto {
@@ -36,4 +42,13 @@ export class ListRidesDto extends PaginationQueryDto {
   @IsOptional()
   @IsDateString()
   date_to?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "'oldest' powers the incident feed's stuck-searching-ride lookup — a one-shot capped fetch, not real pagination (never sent alongside a cursor).",
+    enum: ['recent', 'oldest'],
+  })
+  @IsOptional()
+  @IsIn(['recent', 'oldest'])
+  order?: 'recent' | 'oldest';
 }
