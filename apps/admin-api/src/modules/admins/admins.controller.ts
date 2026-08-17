@@ -46,15 +46,14 @@ export class AdminsController {
   @HttpCode(200)
   @RequirePermissions('admins.manage')
   @ApiOperation({
-    summary:
-      'Change an admin’s role — forwarded to core-api, not a local write.',
+    summary: "Change an admin's role — direct write, see AdminsService.",
   })
   updateRole(
     @Param('id') id: string,
     @Body() dto: UpdateAdminRoleDto,
     @CurrentAdmin() admin: AdminPrincipal,
     @Req() req: Request,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<AdminAccountRow> {
     return this.admins.updateRole(
       id,
       admin,
@@ -68,15 +67,14 @@ export class AdminsController {
   @HttpCode(200)
   @RequirePermissions('admins.manage')
   @ApiOperation({
-    summary:
-      'Deactivate an admin account — forwarded to core-api, not a local write.',
+    summary: 'Deactivate an admin account — direct write, see AdminsService.',
   })
   deactivate(
     @Param('id') id: string,
     @Body() dto: CommandReasonDto,
     @CurrentAdmin() admin: AdminPrincipal,
     @Req() req: Request,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<AdminAccountRow> {
     return this.admins.deactivate(id, admin, dto.reason, req.correlationId);
   }
 }

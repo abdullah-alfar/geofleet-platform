@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -62,4 +63,13 @@ export class ListTripsDto extends PaginationQueryDto {
   @IsNumber()
   @Min(0)
   maximum_price?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "'oldest' powers the incident feed's silent-driver-on-trip lookup — a one-shot capped fetch, not real pagination (never sent alongside a cursor).",
+    enum: ['recent', 'oldest'],
+  })
+  @IsOptional()
+  @IsIn(['recent', 'oldest'])
+  order?: 'recent' | 'oldest';
 }

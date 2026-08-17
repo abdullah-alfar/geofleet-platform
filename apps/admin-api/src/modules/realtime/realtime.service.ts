@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { Inject } from '@nestjs/common';
-import { CoreApiClientService } from '../../integrations/core-api/core-api-client.service';
-import { PaginatedResponse } from '../../common/pagination/paginated-response.interface';
 import { REDIS_CLIENT } from '../../integrations/redis/redis.module';
+import { DriversService } from '../drivers/drivers.service';
+import { RidesService } from '../rides/rides.service';
+import { TripsService } from '../trips/trips.service';
 
 /** An admin map isn't meant to render thousands of pins in one screen,
  * and no region in this platform is anywhere near this scale today — a
@@ -101,52 +102,35 @@ export interface SilentDriverOnTripIncident {
 
 export type Incident = StaleSearchingRideIncident | SilentDriverOnTripIncident;
 
-interface DriverMapRow {
-  driver_id: string;
-  name: string | null;
-  vehicle_type: string | null;
-}
-
-interface StaleRideRow {
-  ride_request_id: string;
-  region_id: string | null;
-  requested_at: string | null;
-}
-
-interface InProgressTripRow {
-  trip_id: string;
-  driver_id: string | null;
-  region_id: string | null;
-  started_at: string | null;
-}
-
 /**
  * The only module in admin-api that reads Redis for anything other than
  * a health-check ping — see docs/admin-api/realtime-operations.md.
- * Region scoping and ride/trip incident detection call core-api's
- * internal/v1 read endpoints directly (no local Kafka-projected read
- * model anymore — see docs/admin-api/query-apis.md); only the live
+ * Region scoping and ride/trip incident detection call
+ * DriversService/RidesService/TripsService directly now — same-process
+ * method calls, not an HTTP round trip to core-api (see
+ * docs/decisions/0011-admin-api-independent-service.md); only the live
  * position/availability data comes from dispatch-service's own Redis
- * index, which has no core-api equivalent (core-api's own tables don't
+ * index, which has no equivalent in core-api's own tables (they don't
  * track a driver's current GPS position). Deliberately does not touch
  * dispatch-service's `dispatch:geocell:*` geohash sets: region scoping
- * comes from core-api's own `region_id` column, then only the
- * already-known driver ids are looked up in Redis for live position.
- * Re-implementing geohash neighbor search in a second language, in a
- * second service, to solve a problem dispatch-service already solves
- * for its own purpose would be pure duplication.
+ * comes from `drivers.region_id`, then only the already-known driver ids
+ * are looked up in Redis for live position. Re-implementing geohash
+ * neighbor search in a second place to solve a problem dispatch-service
+ * already solves for its own purpose would be pure duplication.
  */
 @Injectable()
 export class RealtimeService {
   constructor(
-    private readonly coreApi: CoreApiClientService,
+    private readonly drivers: DriversService,
+    private readonly rides: RidesService,
+    private readonly trips: TripsService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   async getRegionDriverMap(regionId: string): Promise<RegionDriverMap> {
-    const response = await this.coreApi.get<PaginatedResponse<DriverMapRow>>(
-      '/api/internal/v1/drivers',
+    const response = await this.drivers.list(
       { region_id: regionId, limit: MAX_MAP_DRIVERS + 1 },
+      undefined,
     );
     const rows = response.data;
 
@@ -180,9 +164,9 @@ export class RealtimeService {
   }
 
   async getRegionLiveCounters(regionId: string): Promise<RegionLiveCounters> {
-    const response = await this.coreApi.get<PaginatedResponse<DriverMapRow>>(
-      '/api/internal/v1/drivers',
+    const response = await this.drivers.list(
       { region_id: regionId, limit: MAX_MAP_DRIVERS },
+      undefined,
     );
 
     const states = await this.fetchDispatchStates(
@@ -247,21 +231,21 @@ export class RealtimeService {
     // requests genuinely stuck in `searching` for hours (no driver ever
     // available at the time, and nothing ever swept them to
     // `unavailable`) — an unbounded query here would return all of them.
-    // `order=oldest` + a hard cap on core-api's own side: the cap keeps
-    // the worst offenders, not an arbitrary slice.
-    const response = await this.coreApi.get<PaginatedResponse<StaleRideRow>>(
-      '/api/internal/v1/rides',
+    // `order=oldest` + a hard cap: the cap keeps the worst offenders,
+    // not an arbitrary slice.
+    const response = await this.rides.list(
       {
         status: 'searching',
         date_to: threshold,
         order: 'oldest',
         limit: MAX_INCIDENTS_PER_TYPE,
       },
+      undefined,
     );
 
     return response.data
       .filter(
-        (row): row is StaleRideRow & { requested_at: string } =>
+        (row): row is typeof row & { requested_at: string } =>
           row.requested_at !== null,
       )
       .map((row) => ({
@@ -276,16 +260,17 @@ export class RealtimeService {
   private async silentDriversOnActiveTrips(): Promise<
     SilentDriverOnTripIncident[]
   > {
-    const response = await this.coreApi.get<
-      PaginatedResponse<InProgressTripRow>
-    >('/api/internal/v1/trips', {
-      status: 'in_progress',
-      order: 'oldest',
-      limit: MAX_INCIDENTS_PER_TYPE,
-    });
+    const response = await this.trips.list(
+      {
+        status: 'in_progress',
+        order: 'oldest',
+        limit: MAX_INCIDENTS_PER_TYPE,
+      },
+      undefined,
+    );
 
     const rows = response.data.filter(
-      (row): row is InProgressTripRow & { driver_id: string } =>
+      (row): row is typeof row & { driver_id: string } =>
         row.driver_id !== null,
     );
     if (rows.length === 0) {
