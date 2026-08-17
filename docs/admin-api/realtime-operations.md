@@ -2,13 +2,13 @@
 
 The only part of admin-api that reads Redis for anything beyond a health
 ping — see [architecture.md](architecture.md). Everything else in
-admin-api reads core-api's own tables live, through core-api's
-`internal/v1` API ([query-apis.md](query-apis.md)); this module exists
-because even a live read of core-api's Postgres tables doesn't have a
-driver's current GPS position at all — that state only ever lives in
-dispatch-service's own Redis index, not in any table core-api owns — so
-"where is this driver, this second" has exactly one real source, and
-this is the only place in admin-api that reads it.
+admin-api reads core-api's own tables directly via SQL now
+([query-apis.md](query-apis.md), [ADR 0011](../decisions/0011-admin-api-independent-service.md));
+this module exists because even a direct read of core-api's Postgres
+tables doesn't have a driver's current GPS position at all — that state
+only ever lives in dispatch-service's own Redis index, not in any table
+core-api owns — so "where is this driver, this second" has exactly one
+real source, and this is the only place in admin-api that reads it.
 
 ## Why Redis, and which keys
 
@@ -19,9 +19,10 @@ GPS ping and every availability change (see
 `apps/dispatch-service/internal/driverindex/driverindex.go`). admin-api
 reads this key, never writes it, and never touches
 `dispatch:geocell:{geohash}` (dispatch-service's geohash-cell candidate
-index) — region scoping comes from a `GET /internal/v1/drivers?region_id=`
-call to core-api (`drivers.region_id`, a real, indexed column), then only
-the already-known driver ids are looked up in Redis.
+index) — region scoping comes from `DriversService.list({region_id})`,
+a same-process call now, not an HTTP request (`drivers.region_id`, a
+real, indexed column, queried directly), then only the already-known
+driver ids are looked up in Redis.
 Re-implementing geohash neighbor search in TypeScript to solve a problem
 dispatch-service already solves for its own purpose would be pure
 duplication for no benefit — this module is a *reader* of an existing

@@ -21,19 +21,22 @@ C4Container
 
     Rel(adminUser, adminWeb, "Uses", "HTTPS")
     Rel(adminWeb, adminApi, "Queries + commands", "HTTPS, Bearer admin token")
-    Rel(adminApi, coreApi, "Reads + forwards commands: GET/PATCH /internal/v1/...", "HTTPS, shared-secret token")
+    Rel(adminApi, postgres, "Reads/writes core-api's tables directly + owns admin_sessions", "libpq")
     Rel(adminApi, redis, "Reads live operational state where useful (dispatch-service's own index)", "Redis protocol")
-    Rel(coreApi, postgres, "Owns schema; all business reads/writes", "libpq")
-
-    UpdateRelStyle(adminApi, postgres, $offsetY="-40")
-    Rel(adminApi, postgres, "NEVER: no direct read or write to core-api's tables", "✗")
+    Rel(coreApi, postgres, "Owns schema (migrations); all business logic for its own writes", "libpq")
 ```
 
-The last relationship is drawn deliberately to make the forbidden edge
-visible, not to describe real traffic — see "Critical architecture rule"
-below. No Kafka in this diagram: admin-api ran a Kafka-projection
-read model through Phase 4/5, then retired it — see "Kafka projections
-retired" below.
+**This diagram reflects the current architecture as of [ADR
+0011](../decisions/0011-admin-api-independent-service.md)**, which
+reversed the query/command-separation rule the rest of this document
+was originally written around (see "Phase 8" and the superseded-note on
+"Critical architecture rule" below). There is deliberately no
+`adminApi -> coreApi` edge anymore — that relationship doesn't exist.
+No Kafka consumer in this diagram either way: admin-api never reads
+Kafka (it briefly projected 9 topics into its own schema through Phase
+4/5, retired in Phase 6 — see "Kafka projections retired" below); it
+does *publish* to `outbox_events` now (Phase 8), the same table core-api
+itself writes to, picked up by core-api's own unmodified publish loop.
 
 ## What's actually built (all 7 phases complete)
 
@@ -64,9 +67,25 @@ each one's own live verification found):
 - **Phase 7** — the only Redis reads beyond a health ping: a throttled,
   region-scoped live driver map, live driver counters, and a computed
   incident feed, all sourced from dispatch-service's own Redis index.
+- **Phase 8** ([ADR 0011](../decisions/0011-admin-api-independent-service.md),
+  the most recent change) — reversed Phase 2's "verify Sanctum tokens
+  against Postgres, but still call core-api for the token to exist in
+  the first place" and Phase 5/6's "query/command separation, everything
+  through `internal/v1`" entirely. admin-api now has its own
+  login/session system (`admin_sessions`, bcrypt against `users.password`
+  directly) and reads/writes core-api's own tables directly for every
+  module, replicating the outbox insert and audit-log insert core-api's
+  controllers used to do. `CoreApiClientService` and every HTTP call to
+  core-api are deleted, not just unused. See "Phase 8" further down for
+  the full picture — the sections below it (Phases 1-7's own reasoning)
+  are left as historical record, not deleted, per this doc's own
+  practice; treat any sentence in them describing calls to core-api as
+  describing the *old* design.
 
 Nothing in the original target diagram was unbuilt or stubbed by the end
-of Phase 7. It has since changed shape — see the next section.
+of Phase 7. It changed shape twice since — first the Kafka-projection
+retirement (Phase 6), then Phase 8's full reversal — see the next
+sections.
 
 ## Kafka projections retired — reads go straight to core-api
 
@@ -111,7 +130,42 @@ location-service's/dispatch-service's Redis, not core-api's Postgres) —
 `RealtimeService` still reads Redis directly for that; nothing else in
 this platform could serve it.
 
-## Critical architecture rule: query/command separation
+## Phase 8: independent service — direct Postgres/Redis, no core-api calls
+
+**Supersedes the "Critical architecture rule" section below in full.**
+See [ADR 0011](../decisions/0011-admin-api-independent-service.md) for
+the complete reasoning; this section is the short version for this doc's
+own narrative.
+
+admin-api now:
+- Has its own login (`AdminAuthService`, `POST /api/v1/admin/auth/login`)
+  and session store (`admin_sessions`, a table it owns outright) — no
+  call to core-api's `/auth/login`, no read of `personal_access_tokens`.
+- Reads every business entity (drivers, rides, trips, payments,
+  customers, dashboard aggregates) via direct SQL against core-api's own
+  tables, through a broadened `admin_api` Postgres role.
+- Writes every admin command (approve/suspend/unsuspend/disable a
+  driver, cancel a trip, refund a payment, change an admin's role,
+  deactivate an admin) via a direct Postgres transaction: the same
+  conditional-`UPDATE` guard core-api's own controllers used, an
+  `outbox_events` insert where core-api's controller published one (not
+  where it didn't — payment refunds and admin-account changes still
+  don't get a Kafka event, matching core-api's own behavior exactly),
+  and an `audit_logs` insert.
+
+```
+Commands:  Admin Web -> admin-api -> Postgres transaction (guard + outbox + audit) -> outbox -> Kafka
+Queries:   Admin Web -> admin-api -> Postgres (direct SQL) -> Admin Web
+```
+
+`CoreApiClientService`/`CoreApiModule` are deleted, not just unused —
+grep `src` for `coreApi`/`CoreApi` and the only hits left are comments.
+
+## Critical architecture rule: query/command separation (superseded)
+
+**This entire section describes the pre-Phase-8 design and is kept only
+as historical record — see "Phase 8" immediately above for the current
+rule.** Everything below this line was true through Phase 7.
 
 core-api owns core business operations and durable domain logic. admin-api
 must never perform a business-state mutation (cancel a trip, assign a
@@ -132,17 +186,19 @@ outbox, inbox idempotency, atomic ride acceptance (see the root
 for the narrow slice each owns, the three Go services). Letting a second
 service write to those same tables would mean re-implementing (or, more
 likely, quietly violating) those invariants from a second, independent
-codebase. This is the same reasoning that already kept dispatch-service
-and realtime-gateway from getting broad write access to core-api's schema
-(see [ADR 0005](../decisions/0005-geohash-and-dispatch-db-access.md),
-[ADR 0006](../decisions/0006-realtime-gateway-fanout.md)) — admin-api is
-held to a *stricter* version of the same rule: those two Go services at
-least got narrow, audited grants for the one write each strictly needs
-(dispatch-service's offer acceptance, nothing for realtime-gateway).
-admin-api gets none, because it has no equivalent single-row-conditional-
-UPDATE need — every admin command is inherently a multi-step business
-decision (a cancellation reason, a refund amount, an audit trail) that
-belongs in the domain layer, not a BFF.
+codebase — the exact trade-off Phase 8 above knowingly accepted, porting
+each guard 1:1 rather than redesigning it. This is the same reasoning
+that already kept dispatch-service and realtime-gateway from getting
+broad write access to core-api's schema (see
+[ADR 0005](../decisions/0005-geohash-and-dispatch-db-access.md),
+[ADR 0006](../decisions/0006-realtime-gateway-fanout.md)) — admin-api
+was held to a *stricter* version of the same rule: those two Go services
+at least got narrow, audited grants for the one write each strictly
+needs (dispatch-service's offer acceptance, nothing for
+realtime-gateway). admin-api got none, because it had no equivalent
+single-row-conditional-UPDATE need — until Phase 8 decided every admin
+command's guard, outbox insert, and audit insert *could* be replicated
+faithfully enough to be worth the tighter latency/architecture instead.
 
 ## Technology choices (Phase 1)
 
@@ -154,9 +210,11 @@ belongs in the domain layer, not a BFF.
 | Logging | `nestjs-pino` | Structured JSON logs, matching core-api's `Log::shareContext` and every Go service's `log/slog` usage — one correlation id shared across every log line for a request. |
 | Health checks | `@nestjs/terminus` | Standard NestJS health-check plumbing (per-indicator up/down, automatic 503 on failure) — mirrors the shape of each Go service's own `Pinger`-based `/readyz` handler without hand-rolling the same thing a third time. |
 | Metrics | `prom-client`, own `Registry` | Same "own registry, not the global default" rule every Go service's `internal/metrics` package already follows. |
-| HTTP client (core-api calls) | `@nestjs/axios` | `CoreApiClientService` — every command *and* query goes through this one client now (see "Kafka projections retired" above); timeout, correlation-id propagation, structured errors, shared-secret header. |
-| Kafka client | ~~`kafkajs`~~ | Removed. Backed Phase 4's projection consumer; no longer used anywhere in admin-api since that consumer was retired. |
-| Redis client | `ioredis` | Used today only for the `/ready` ping; mature, actively maintained, the most common choice in the NestJS ecosystem — will back any Phase 7 live-state reads. |
+| HTTP client (core-api calls) | ~~`@nestjs/axios`~~ | Removed in Phase 8 — `CoreApiClientService` and every HTTP call to core-api are deleted; admin-api reads/writes Postgres directly instead (see [ADR 0011](../decisions/0011-admin-api-independent-service.md)). Still present transitively via `@nestjs/terminus`'s own dependency tree, unused by admin-api's own code. |
+| Postgres client | `pg` (`node-postgres`) | Was auth-only (token verification) through Phase 7; Phase 8 broadened this to every read/write module. Raw parameterized SQL, no query builder — Kysely was tried once (Phase 3) and removed, not reintroduced. |
+| Password hashing | `bcrypt` | New in Phase 8, for `AdminAuthService` verifying `users.password` directly. Verifies core-api's PHP-produced `$2y$`-tagged hashes correctly after normalizing the tag to `$2b$` (byte-identical algorithm, different naming convention only — see [ADR 0011](../decisions/0011-admin-api-independent-service.md)). |
+| Kafka client | ~~`kafkajs`~~ | Removed. Backed Phase 4's projection consumer; no longer used anywhere in admin-api since that consumer was retired. admin-api still reaches Kafka indirectly (Phase 8's `outbox_events` inserts, published by core-api's own loop) without holding a Kafka client of its own. |
+| Redis client | `ioredis` | Used for the `/ready` ping and Phase 7's live-state reads (unchanged by Phase 8 — see [ADR 0011](../decisions/0011-admin-api-independent-service.md)'s "what was NOT changed"). |
 | Security headers | `helmet` | Standard, low-risk hardening with no functional trade-off. |
 | Rate limiting | `@nestjs/throttler`, global default (100 req/min/IP) | A conservative floor applied now so even `/health`/`/docs` aren't unprotected; Phase 2 will add a tighter, endpoint-specific policy once real auth/command endpoints exist (mirrors core-api's `throttle:auth` on `/auth/*`). |
 | Response/error envelope | Hand-rolled interceptor + filter | Small enough not to need a library; shape deliberately mirrors core-api's `App\Support\ApiError` (`{ error: { code, message, correlation_id } }`) so admin-web never has to special-case which backend produced an error. |

@@ -9,11 +9,6 @@ export interface AppConfig {
     port: number;
     password: string;
   };
-  coreApi: {
-    baseUrl: string;
-    timeoutMs: number;
-    internalToken: string;
-  };
   adminPostgresDsn: string;
 }
 
@@ -35,11 +30,6 @@ export default (): AppConfig => ({
   redis: {
     ...parseHostPort(process.env.REDIS_ADDR ?? '127.0.0.1:6379'),
     password: process.env.REDIS_PASSWORD ?? '',
-  },
-  coreApi: {
-    baseUrl: process.env.CORE_API_BASE_URL ?? 'http://127.0.0.1:8000',
-    timeoutMs: Number(process.env.CORE_API_TIMEOUT_MS ?? 3000),
-    internalToken: process.env.ADMIN_API_INTERNAL_TOKEN ?? '',
   },
   adminPostgresDsn: process.env.ADMIN_API_POSTGRES_DSN ?? '',
 });

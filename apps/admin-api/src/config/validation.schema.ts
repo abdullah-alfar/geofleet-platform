@@ -22,19 +22,10 @@ export const validationSchema = Joi.object({
   REDIS_ADDR: Joi.string().required(),
   REDIS_PASSWORD: Joi.string().allow('').default(''),
 
-  CORE_API_BASE_URL: Joi.string().uri().required(),
-  CORE_API_TIMEOUT_MS: Joi.number().integer().positive().default(3000),
-
-  // Sent as X-Internal-Service-Token on internal/v1/* calls — both
-  // commands and reads go through this boundary now (see
-  // docs/decisions/0010-internal-service-authentication.md and
-  // docs/admin-api/query-apis.md).
-  ADMIN_API_INTERNAL_TOKEN: Joi.string().required(),
-
-  // Auth-only: verifies Sanctum tokens against the admin_api role (see
-  // docs/decisions/0009-admin-identity.md). No admin_read schema anymore
-  // — every other query goes through core-api's internal/v1 read
-  // endpoints instead.
+  // admin-api's own login/session store and direct read/write access to
+  // every business table its commands touch — no runtime dependency on
+  // core-api at all anymore (see
+  // docs/decisions/0011-admin-api-independent-service.md).
   ADMIN_API_POSTGRES_DSN: Joi.string()
     .uri({ scheme: ['postgres', 'postgresql'] })
     .required(),

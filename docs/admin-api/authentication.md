@@ -1,11 +1,39 @@
 # admin-api: Authentication
 
 How a request to admin-api gets from a bearer token to a verified admin
-identity — no call back into core-api, ever. See
-[ADR 0009](../decisions/0009-admin-identity.md) for why this shape was
-chosen.
+identity — no call back into core-api, ever (now true in an even
+stronger sense: admin-api doesn't call core-api for *anything*, not just
+auth). See [ADR 0011](../decisions/0011-admin-api-independent-service.md)
+(supersedes [ADR 0009](../decisions/0009-admin-identity.md) for this
+specific mechanism — the "why Sanctum-style abilities, why an `admins`
+table" reasoning in 0009 is still accurate, only the token store
+changed).
 
-## The chain
+## Login
+
+```
+Admin Web
+  -> POST /api/v1/admin/auth/login { email, password }
+  -> AdminAuthService.login()
+       -> SELECT id, uuid, password, status, role FROM users WHERE email = $1
+       -> bcrypt.compare(password, row.password)
+            (normalizing core-api's PHP-tagged $2y$ hash to $2b$ first —
+            byte-identical algorithm, different tag only)
+       -> reject unless: password matches, status = 'active', role = 'admin',
+          an admins row exists
+       -> generate random plaintext, SHA-256 hash it,
+          INSERT INTO admin_sessions (user_id, token_hash, admin_role, abilities, ...)
+       -> return "{session_id}|{plaintext}"
+```
+
+Every failure path — no such email, wrong password, inactive account,
+not an admin — collapses to the same generic `401`, with `bcrypt.compare`
+still run even on a not-found email (against a fixed dummy hash) so a
+missing-email response doesn't return measurably faster than a
+wrong-password one. No account enumeration, same principle core-api's
+own login endpoint already applied.
+
+## The chain (every other request)
 
 ```
 Admin Web
@@ -13,40 +41,35 @@ Admin Web
   -> AuthGuard (src/modules/auth/guards/auth.guard.ts)
        -> TokenVerificationService.verify()
             -> split "{id}|{plaintext}"
-            -> SELECT ... FROM personal_access_tokens
-                 JOIN users ON users.id = personal_access_tokens.tokenable_id
-                 LEFT JOIN admins ON admins.user_id = users.id
-                 WHERE personal_access_tokens.id = $1
+            -> SELECT ... FROM admin_sessions
+                 JOIN users ON users.id = admin_sessions.user_id
+                 WHERE admin_sessions.id = $1
             -> SHA-256(plaintext), constant-time compare against the
-               stored hash (same algorithm as Sanctum's own
-               PersonalAccessToken::findToken())
+               stored hash (same shape as Sanctum's own
+               PersonalAccessToken::findToken(), just admin-api's own
+               table now)
             -> reject unless: hash matches, not expired,
-               users.status = 'active', users.role = 'admin',
-               an admins row exists
+               users.status = 'active' (checked live, every call — this
+               is what makes admin_account.deactivate take effect on the
+               very next request, not just the next login)
        -> request.admin = AdminPrincipal { userId, adminRole, abilities }
   -> route handler, via @CurrentAdmin()
 ```
 
 Every failure mode — missing header, malformed token, unknown token id,
-wrong secret, expired, wrong role, suspended account, missing admin
-profile — collapses to the same `401 unauthenticated`. An auth guard
-should never tell a caller *why* a credential didn't work (account
-enumeration risk), the same principle core-api's own login endpoint
-already applies.
+wrong secret, expired, deactivated account — collapses to the same `401
+unauthenticated`. An auth guard should never tell a caller *why* a
+credential didn't work (account enumeration risk).
 
 ## Postgres access
 
 A dedicated connection pool (`src/integrations/postgres`), connected as
-the `admin_api` role
-(`apps/core-api/database/migrations/2026_08_12_110000_create_admin_api_role.php`).
-That role can `SELECT` exactly six columns across three tables —
-`personal_access_tokens (id, tokenable_id, tokenable_type, token,
-abilities, expires_at)`, `users (id, uuid, status, role)`, `admins
-(user_id, admin_role)` — and nothing else. No ride/trip/payment/driver
-domain table is reachable through this connection. This is intentionally
-narrower than every Go service's own Postgres role in this platform: it
-answers exactly one question (is this bearer token a live admin session,
-and what can it do), never business data.
+the `admin_api` role. Through Phase 7 this role was auth-only (six
+columns across three tables). [ADR 0011](../decisions/0011-admin-api-independent-service.md)
+broadened it to full-table `SELECT` on every business table admin-api's
+7 modules read, column-scoped `UPDATE` matching exactly what each admin
+command writes, and full CRUD on `admin_sessions` — the table this file
+describes, which admin-api owns outright and core-api never reads.
 
 ## Using it in a controller
 

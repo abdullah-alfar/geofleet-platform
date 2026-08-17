@@ -3,27 +3,37 @@
 Every read-only endpoint the admin dashboard calls — all under
 `/api/v1/admin/*`, all requiring an admin bearer token
 ([authentication.md](authentication.md)) plus a `*.view` permission
-([permissions.md](permissions.md)). Each one is a thin proxy: admin-api
-calls core-api's own `internal/v1` API synchronously
-(`CoreApiClientService`, the same shared-secret client Phase 6 built for
-commands — [laravel-integration.md](laravel-integration.md)) and reshapes
-the response. **admin-api keeps no local read model of its own.**
+([permissions.md](permissions.md)). Each one runs a parameterized SQL
+query directly against core-api's own Postgres tables (`pg`, no query
+builder) and reshapes the rows into the response shape below — no HTTP
+call to core-api anywhere in this path anymore. See
+[ADR 0011](../decisions/0011-admin-api-independent-service.md); the
+`*.service.ts` file for each module (e.g.
+`src/modules/drivers/drivers.service.ts`) is the source of truth for the
+exact query. **admin-api keeps no local read model of its own** — same
+principle as before, just a direct connection instead of a proxied one.
 
-## Kafka projections retired
+## History: two earlier designs, both retired
 
-Phases 3–5 built this the other way: a Kafka consumer projected 9 live
-topics into admin-api's own `admin_read` Postgres schema, and every
-endpoint below read from that instead. That's gone —
-`KafkaModule`/every projection handler/the Kysely `DatabaseModule`/the
-`admin_read` schema itself are all deleted, not disabled. See
-[architecture.md](architecture.md#kafka-projections-retired---reads-go-straight-to-core-api)
-for the full reasoning. Short version: admin traffic is low-volume
-enough that the eventual-consistency lag and second-schema-to-maintain
-cost of a projection wasn't buying anything real, and it caused a
-concrete bug (a driver's list-view status permanently unable to reflect
-an admin command someone had already run, because no event carried it) —
-reading core-api's own tables directly has no such gap, since it's the
-same data core-api itself operates on.
+This is the *third* shape this read path has taken:
+
+1. **Phases 3–5**: a Kafka consumer projected 9 live topics into
+   admin-api's own `admin_read` Postgres schema. Retired — eventual-
+   consistency lag and a second schema to maintain weren't buying
+   anything real for low-volume admin traffic, and it caused a concrete
+   bug (a driver's list-view status permanently unable to reflect an
+   admin command someone had already run, because no event carried it).
+2. **Phase 6 through 7**: admin-api called core-api's own `internal/v1`
+   API synchronously (`CoreApiClientService`) and reshaped the response
+   — a thin proxy, no local storage at all. Also retired — see
+   [ADR 0011](../decisions/0011-admin-api-independent-service.md) for
+   why the extra network hop and the coupling to core-api's uptime
+   weren't worth it either, once the same guard/audit/outbox logic could
+   be replicated directly.
+3. **Current (Phase 8)**: direct SQL, as described above.
+
+See [architecture.md](architecture.md#kafka-projections-retired---reads-go-straight-to-core-api)
+for the full phase-by-phase history.
 
 ## Endpoints
 
@@ -65,24 +75,29 @@ rather than duplicated a second time.
 ## Cursor pagination
 
 Every list endpoint uses keyset pagination — never `OFFSET`, per the
-original spec's Large Dataset Rules. core-api does the actual paginated
-query and cursor encoding now (`App\Support\CursorPagination`, mirroring
-admin-api's old TS scheme exactly: base64url `{value, id}`); admin-api
-forwards the `cursor`/`limit` query params through unchanged and returns
-core-api's `{data, meta}` response as-is. Ordering is `(updated_at DESC,
-<uuid> DESC)` by default; core-api's realtime-serving list calls
-(the incident feed) pass `order=oldest` to sort by the ride/trip's own
-timestamp ascending instead, since that use case wants "the N oldest
-stuck items," not a browsable page.
+original spec's Large Dataset Rules. admin-api does the paginated query
+and cursor encoding itself now (`src/common/pagination/cursor.ts` —
+`encodeCursor`/`decodeCursor`/`cursorWhereFragment`/`paginateRows`,
+shared by every module), a direct TypeScript port of core-api's own
+`App\Support\CursorPagination` (same base64url `{value, id}` scheme,
+same `(orderColumn, idColumn) < (cursor)` row-comparison logic — just
+built as a Postgres row-constructor comparison directly rather than
+Laravel's OR-based equivalent). Ordering is `(updated_at DESC, <uuid>
+DESC)` by default; `RealtimeService`'s incident-feed calls into
+`RidesService`/`TripsService` pass `order: 'oldest'` to sort by the
+ride/trip's own timestamp ascending instead, since that use case wants
+"the N oldest stuck items," not a browsable page.
 
 ```json
 { "data": [...], "meta": { "next_cursor": "eyJ2YWx1ZSI6Ii4uLiJ9" } }
 ```
 
 `next_cursor: null` means there is no next page. `limit` defaults to 20,
-capped at 100 (core-api itself accepts up to 500 — used internally by
-`RealtimeService`'s region driver-map/counters calls, which aren't a
-browsable list and need the whole region in one shot).
+capped at 100 — `RealtimeService`'s region driver-map/counters calls
+pass up to 501 directly to `DriversService.list()` internally (a
+same-process method call now, not an HTTP request bound by the public
+endpoint's own cap), since that use case needs the whole region in one
+shot, not a browsable page.
 
 ## Two scope decisions
 

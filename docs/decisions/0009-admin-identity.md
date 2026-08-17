@@ -1,7 +1,15 @@
 # ADR 0009: Admin identity — Sanctum token abilities, not a separate identity system
 
 ## Status
-Accepted
+Accepted. **Superseded in part by [ADR 0011](0011-admin-api-independent-service.md)**:
+the "What this enables for admin-api" section below (verifying tokens
+directly against core-api's Postgres tables, "no call back into
+core-api") describes admin-api's *old* auth mechanism — admin-api now
+has its own independent login/session system and no longer reads
+`personal_access_tokens` at all. Everything above that section (reusing
+Sanctum for customer/driver/admin identity, the `admins` table shape,
+`AdminPermissions`' static role map, out-of-band provisioning) is still
+accurate and unaffected.
 
 ## Context
 

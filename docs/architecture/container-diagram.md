@@ -24,7 +24,7 @@ C4Container
         Container(locationService, "location-service", "Go 1.26.3", "Validates and ingests driver GPS updates. Port 8081.")
         Container(dispatchService, "dispatch-service", "Go 1.26.3", "Matches ride requests to nearby drivers; atomic ride-acceptance. Port 8082.")
         Container(realtimeGateway, "realtime-gateway", "Go 1.26.3", "Relays ride-lifecycle events and live driver location to WebSocket clients. Port 8083.")
-        Container(adminApi, "admin-api", "NestJS 11 / TypeScript", "Admin BFF: reads live from and forwards commands to core-api's internal API, reads live driver state from Redis. Never reads or writes core-api's tables directly. Port 3001.")
+        Container(adminApi, "admin-api", "NestJS 11 / TypeScript", "Admin BFF: reads and writes core-api's Postgres tables directly (own login/session store, own broadened Postgres role), reads live driver state from Redis. No HTTP calls to core-api at all. Port 3001.")
 
         ContainerDb(postgres, "Postgres", "PostgreSQL 16 + PostGIS 3.4", "System of record. One database, per-service least-privilege roles. Host port 55432.")
         ContainerDb(redis, "Redis", "Redis 7.4", "Latest-driver-location cache, geo-cell driver index, realtime-gateway Pub/Sub + correlation state, core-api cache/session. Host port 63790.")
@@ -57,9 +57,8 @@ C4Container
     Rel(realtimeGateway, redis, "Pub/Sub fan-out (rt:driver:*, rt:customer:*) + TTL correlation state", "Redis protocol")
     Rel(realtimeGateway, kafka, "Consumes ride.* + driver.location.validated.v1; publishes nothing", "Kafka protocol")
 
-    Rel(adminApi, postgres, "Auth-only (role: admin_api): reads 3 tables in public — never core-api's business tables", "libpq")
+    Rel(adminApi, postgres, "Reads/writes core-api's business tables directly + owns admin_sessions (role: admin_api, broadened)", "libpq")
     Rel(adminApi, redis, "Reads dispatch-service's live driver state, read-only", "Redis protocol")
-    Rel(adminApi, coreApi, "Reads and forwards commands: GET/PATCH /internal/v1/*", "HTTPS, shared secret")
 
     Rel(coreApi, paymentProvider, "Charges / refunds (planned)", "HTTPS")
 ```
@@ -72,32 +71,31 @@ C4Container
 | [location-service](../../apps/location-service/README.md) | Go 1.26.3 | 8081 | GPS ingestion + validation, "latest location" cache |
 | [dispatch-service](../../apps/dispatch-service/README.md) | Go 1.26.3 | 8082 | Nearby-driver matching, ride offers, atomic acceptance |
 | [realtime-gateway](../../apps/realtime-gateway/README.md) | Go 1.26.3 | 8083 | WebSocket push of ride-lifecycle events + live location |
-| [admin-api](../../apps/admin-api/README.md) | NestJS 11 / TypeScript | 3001 | Admin BFF — reads core-api live, command forwarding, live driver map |
+| [admin-api](../../apps/admin-api/README.md) | NestJS 11 / TypeScript | 3001 | Admin BFF — reads/writes core-api's tables directly, own login/session store, live driver map |
 
 None of the three Go services own domain data beyond the narrow Postgres
-slice AGENTS.md's least-privilege convention grants them — core-api is the
-only container with unrestricted access to its own schema. Every Go
+slice AGENTS.md's least-privilege convention grants them — core-api is
+the only container with unrestricted access to its own schema. Every Go
 service's exact grant is a per-service ADR: location-service
 ([0004](../decisions/0004-location-service-postgres-read-access.md)),
 dispatch-service ([0005](../decisions/0005-geohash-and-dispatch-db-access.md)),
 realtime-gateway ([0006](../decisions/0006-realtime-gateway-fanout.md)).
-admin-api is held to a *stricter* rule than any of the three Go
-services — it gets no grant on core-api's business tables at all, not
-even a read-only one (its Postgres role is auth-only — three columns
-across three tables, to verify a Sanctum token), and has no write path
-either, not even a single-row conditional `UPDATE`. Every business read
-and write goes through core-api's own `internal/v1` API instead — see
-[docs/admin-api/architecture.md](../admin-api/architecture.md)'s
-"Critical architecture rule" and [ADR 0009](../decisions/0009-admin-identity.md)/
-[ADR 0010](../decisions/0010-internal-service-authentication.md).
+admin-api used to be held to a *stricter* rule than any of the three Go
+services (no grant on core-api's business tables at all, auth-only) —
+[ADR 0011](../decisions/0011-admin-api-independent-service.md) reversed
+that: admin-api's Postgres role is now the *broadest* of the four,
+matching every table its 7 read/write modules touch, column-scoped on
+writes the same way `dispatch_service`'s role already was. See
+[docs/admin-api/architecture.md](../admin-api/architecture.md) and
+[ADR 0011](../decisions/0011-admin-api-independent-service.md).
 
 ## Shared infrastructure
 
 | Container | Used by | For |
 |---|---|---|
-| Postgres 16 + PostGIS 3.4 | all five services | System of record. One physical database, one role per service (`location_service`, `dispatch_service`, `realtime_gateway`, `admin_api`; core-api connects as the migration-owning role). No service reads or writes another's tables outside its granted role — `admin_api`'s own role is the narrowest of the four, auth-only (three columns across `personal_access_tokens`/`users`/`admins`), no schema of its own; it reads core-api's business data through core-api's own API instead. |
-| Redis 7.4 | all five services | Five unrelated uses sharing one instance: location-service's latest-location/rate-limit keys, dispatch-service's geohash driver index, realtime-gateway's Pub/Sub channels + correlation state, core-api's framework cache/session store (`CACHE_STORE=redis`, `SESSION_DRIVER=redis` — carries no domain data at all, unlike the others), and admin-api's read-only lookups of dispatch-service's own `dispatch:driver:{id}` keys (never writes, never touches `dispatch:geocell:*`). |
-| Kafka 3.9 (KRaft, single broker) | core-api, location-service, dispatch-service, realtime-gateway | The only inter-service event bus (AGENTS.md hard invariant — no service calls another's HTTP API for anything on the write path, except the driver-facing accept/reject calls dispatch-service itself serves, and admin-api's command/query calls to core-api's internal API). See [topic-catalog.md](../events/topic-catalog.md) for every topic and [data-flow.md](data-flow.md) for how events actually move end to end. admin-api doesn't use Kafka at all — it ran a 9-topic projection consumer through an earlier phase, retired in favor of reading core-api live (see [docs/admin-api/architecture.md](../admin-api/architecture.md)). |
+| Postgres 16 + PostGIS 3.4 | all five services | System of record. One physical database, one role per service (`location_service`, `dispatch_service`, `realtime_gateway`, `admin_api`; core-api connects as the migration-owning role). No service reads or writes another's tables outside its granted role — `admin_api`'s role is now the broadest of the four (see [ADR 0011](../decisions/0011-admin-api-independent-service.md)): full-table `SELECT` on every business table its 7 modules read, column-scoped `UPDATE` matching exactly what each admin command writes, plus full CRUD on `admin_sessions`, a table it owns outright. |
+| Redis 7.4 | all five services | Five unrelated uses sharing one instance: location-service's latest-location/rate-limit keys, dispatch-service's geohash driver index, realtime-gateway's Pub/Sub channels + correlation state, core-api's framework cache/session store (`CACHE_STORE=redis`, `SESSION_DRIVER=redis` — carries no domain data at all, unlike the others), and admin-api's read-only lookups of dispatch-service's own `dispatch:driver:{id}` keys (never writes, never touches `dispatch:geocell:*`) — the one Redis use case [ADR 0011](../decisions/0011-admin-api-independent-service.md) left unchanged. |
+| Kafka 3.9 (KRaft, single broker) | core-api, location-service, dispatch-service, realtime-gateway | The only inter-service event bus (AGENTS.md hard invariant — no service calls another's HTTP API for anything on the write path, except the driver-facing accept/reject calls dispatch-service itself serves). See [topic-catalog.md](../events/topic-catalog.md) for every topic and [data-flow.md](data-flow.md) for how events actually move end to end. admin-api doesn't consume Kafka — it publishes to `outbox_events` directly (picked up by core-api's own unmodified publish loop, see [ADR 0011](../decisions/0011-admin-api-independent-service.md)), the same mechanism core-api itself uses. |
 
 ## Authentication credentials by container
 
@@ -115,26 +113,27 @@ service inventing its own (see ADR
   its own REST API and by realtime-gateway for the customer WebSocket
   endpoint (replicating Sanctum's own lookup, not calling back into
   core-api).
-- **Admin Sanctum token** (`{id}|{plaintext}`, abilities-scoped) — issued
-  by the same `POST /api/v1/auth/login` endpoint as customer/driver
-  tokens, not a separate session-based mechanism (see
-  [ADR 0009](../decisions/0009-admin-identity.md) for why a second
-  identity system wasn't built). Verified by admin-api the same way
-  realtime-gateway verifies customer/driver tokens — split, hash,
-  constant-time compare against Postgres directly, no call back into
-  core-api — with abilities read straight off the token row and enforced
-  by `PermissionsGuard` (`docs/admin-api/authentication.md`/`permissions.md`).
+- **Admin session token** (`{id}|{plaintext}`, abilities-scoped) — issued
+  by admin-api's own `POST /api/v1/admin/auth/login`, into `admin_sessions`,
+  a table admin-api owns outright — no longer core-api's Sanctum
+  `personal_access_tokens` at all (see
+  [ADR 0011](../decisions/0011-admin-api-independent-service.md), which
+  supersedes [ADR 0009](../decisions/0009-admin-identity.md)'s original
+  "share core-api's Sanctum tokens" design for this one credential).
+  admin-api verifies `users.password` (bcrypt) directly at login and the
+  session token on every subsequent request — split, hash, constant-time
+  compare, `users.status` joined live so a deactivated admin is locked
+  out on their very next request — with abilities read straight off the
+  session row and enforced by `PermissionsGuard`
+  (`docs/admin-api/authentication.md`/`permissions.md`).
 
 No service calls another service's HTTP API to authenticate a request —
-every credential is verified locally against Postgres, which is why
-realtime-gateway's and admin-api's Postgres roles both exist despite
-neither service holding much (or any, for realtime-gateway) other domain
-state. The one exception on the *command* path: admin-api's
-`internal/v1/*` calls to core-api are authenticated by a shared secret,
-not a Postgres-verified token — see
-[ADR 0010](../decisions/0010-internal-service-authentication.md) for why
-that boundary is different in kind from every other credential here (it
-authenticates *a service*, not a human).
+every credential is verified locally against Postgres. This is now
+categorically true with no exception: [ADR 0010](../decisions/0010-internal-service-authentication.md)'s
+shared-secret internal/v1 boundary existed specifically for admin-api's
+command/query calls to core-api, which no longer exist at all (see
+[ADR 0011](../decisions/0011-admin-api-independent-service.md)) — that
+boundary is now unused by any service in this platform.
 
 ## What this diagram intentionally excludes
 

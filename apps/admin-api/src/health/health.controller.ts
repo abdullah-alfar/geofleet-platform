@@ -12,7 +12,6 @@ import {
   HealthIndicatorResult,
 } from '@nestjs/terminus';
 import type { Response } from 'express';
-import { CoreApiHealthIndicator } from './indicators/core-api.indicator';
 import { PostgresHealthIndicator } from './indicators/postgres.indicator';
 import { RedisHealthIndicator } from './indicators/redis.indicator';
 
@@ -22,15 +21,14 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly redis: RedisHealthIndicator,
-    private readonly coreApi: CoreApiHealthIndicator,
     private readonly postgres: PostgresHealthIndicator,
   ) {}
 
   /**
    * Pure liveness — never touches an external dependency. An outage in
-   * Postgres/Redis/core-api must not make an orchestrator kill and
-   * restart an otherwise-healthy process (same rule location-service's
-   * /healthz already follows).
+   * Postgres/Redis must not make an orchestrator kill and restart an
+   * otherwise-healthy process (same rule location-service's /healthz
+   * already follows).
    */
   @Get('health')
   @ApiExcludeEndpoint()
@@ -51,9 +49,10 @@ export class HealthController {
   @ApiOperation({
     summary:
       'Readiness — checks every dependency this instance actually needs ' +
-      '(Redis, core-api, Postgres via the admin_api auth-only role). No ' +
-      'Kafka indicator — admin-api reads live from core-api now instead ' +
-      'of consuming events.',
+      '(Redis, Postgres via the broadened admin_api role). No core-api ' +
+      'indicator — admin-api reads/writes Postgres directly now, with no ' +
+      'runtime dependency on core-api at all (see ' +
+      'docs/decisions/0011-admin-api-independent-service.md).',
   })
   @HealthCheck()
   async ready(
@@ -62,7 +61,6 @@ export class HealthController {
     try {
       return await this.health.check([
         (): Promise<HealthIndicatorResult> => this.redis.check('redis'),
-        (): Promise<HealthIndicatorResult> => this.coreApi.check('core_api'),
         (): Promise<HealthIndicatorResult> => this.postgres.check('postgres'),
       ]);
     } catch (error) {
