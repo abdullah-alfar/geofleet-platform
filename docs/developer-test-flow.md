@@ -224,6 +224,27 @@ conditional-UPDATE guarantee in `internal/offerstore/store.go` working
 (the second UPDATE affects 0 rows), the actual point of this test, not
 an error.
 
+**Run this immediately after 10 — `OFFER_TTL` (`apps/dispatch-service/.env`)
+is 15 seconds by default.** If you read the offer 10 printed, then
+switched terminals or paused to look something up before running 11,
+you can easily blow past 15 seconds by hand — dispatch-service's own
+expiry sweep resolves the offer to `expired` in the background the
+moment its TTL passes, with nobody needing to touch it. When that
+happens, **the *first* accept attempt also comes back `409
+offer_not_available`**, not just the intentional second one — same
+error code as the real double-accept case, different actual cause.
+Tell them apart with:
+```sql
+select status, offered_at, expires_at, responded_at from ride_offers where uuid = '<OFFER_ID>';
+```
+`status = 'expired'` and `responded_at` a second or two after
+`expires_at` means the clock beat you, not a bug — just re-run 08 → 09
+→ 10 → 11 back-to-back with no pause in between. `status = 'accepted'`
+with a `responded_at` from a driver other than yours would mean an
+actual race, which shouldn't happen in this kit (only one driver
+exists per run) but is what the guarantee is actually protecting
+against in production.
+
 ### 12 — verify ride assigned
 
 Expect `GET /ride-requests/{id}` to now show `data.status = "accepted"`
