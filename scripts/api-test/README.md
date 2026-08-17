@@ -57,6 +57,7 @@ run the script, read the response next to the code that produced it.
 | `13-cancel-ride-request.sh` | `POST /ride-requests/{id}/cancel` (+ 2 negative cases) | `RideRequestController::cancel` |
 | `14-admin-api-session.sh` | admin-api session + drivers list (+ negative case) | `docs/admin-api/query-apis.md` |
 | `15-realtime-ws.py` | realtime-gateway WebSocket, live | `internal/httpapi/ws.go`, `internal/relay/*.go` |
+| `16-tail-kafka.sh` | every topic in `docs/events/topic-catalog.md`, live | the raw envelopes themselves — no single source file, this is the wire format every publisher/consumer above agrees on |
 
 Scripts 04–13 depend on state from earlier ones (`require` at the top of
 each one tells you exactly which variable is missing and which script
@@ -79,6 +80,29 @@ Two terminals side by side is the actual point of this kit:
 Terminal A prints `ride.assigned.v1` the instant dispatch-service
 publishes it — no polling, no refresh, the same push a real rider app
 gets.
+
+`16-tail-kafka.sh` is the lower-level version of the same idea — instead
+of one relayed WebSocket feed, it's every raw event envelope on every
+topic, straight from Kafka:
+
+```bash
+./16-tail-kafka.sh                    # all topics, new messages only
+./16-tail-kafka.sh --from-beginning   # all topics, replay everything retained
+./16-tail-kafka.sh ride.requested.v1  # just one topic
+```
+
+**Known gap: the first second or two after starting can miss messages.**
+Consumer groups don't subscribe instantly — `kafka-console-consumer.sh`
+has to join the group and get a partition assignment from the broker
+before it actually starts receiving, and that join/rebalance takes a
+brief moment. If you start this script and immediately fire off a script
+like `08-submit-gps.sh` in the same breath, the publish can land before
+the join finishes and never show up here. This is normal Kafka consumer
+behavior, not a bug in this script. Two ways around it:
+- Use `--from-beginning` — replays retained history, so nothing is
+  missed regardless of join timing.
+- Just pause a beat after the "Tailing ... (Ctrl+C to stop)" banner
+  prints before triggering the event you want to watch for.
 
 ## Testing failure cases, not just the happy path
 
