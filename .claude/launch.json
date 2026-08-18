@@ -30,6 +30,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd apps/rider-web && npm run dev"],
       "port": 3003
+    },
+    {
+      "name": "driver-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/driver-web && npm run dev"],
+      "port": 3004
     }
   ]
 }
