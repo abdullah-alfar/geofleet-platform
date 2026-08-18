@@ -9,6 +9,25 @@ import (
 	"github.com/google/uuid"
 )
 
+// corsMiddleware allows browser-based clients (apps/driver-web,
+// apps/rider-web) to hit /healthz, /readyz, /metrics from a different
+// origin/port — see apps/location-service's identical middleware for the
+// full reasoning. The WS routes need their own fix (websocket.Accept's
+// origin check, see ws.go) since a GET WS-upgrade request is never
+// preflighted with OPTIONS the way this middleware handles.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func correlationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		correlationID := r.Header.Get("X-Correlation-Id")

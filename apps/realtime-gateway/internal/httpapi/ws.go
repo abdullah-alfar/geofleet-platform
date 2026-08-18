@@ -23,6 +23,17 @@ type Authenticator interface {
 	AuthenticateCustomer(ctx context.Context, bearerToken string) (*auth.Customer, error)
 }
 
+// websocket.Accept rejects cross-origin upgrade requests by default (an
+// Origin header not matching the request's own Host) — fine for a
+// same-origin app, but apps/driver-web and apps/rider-web run on their
+// own dev ports (3003/3004) and call this service directly. The actual
+// access control here is the bearer token (device token or Sanctum
+// token), not same-origin, so InsecureSkipVerify carries no additional
+// risk — same reasoning as this package's corsMiddleware. The library's
+// own docs explicitly steer away from OriginPatterns:[]string{"*"} in
+// favor of this flag for exactly this "allow any origin" case.
+var wsAcceptOptions = &websocket.AcceptOptions{InsecureSkipVerify: true}
+
 // WSHandler upgrades authenticated driver/customer requests to WebSocket
 // connections and registers them with the hub for the duration of the
 // connection. Both endpoints are otherwise identical — accept, register,
@@ -75,7 +86,7 @@ func (h *WSHandler) ServeDriver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := websocket.Accept(w, r, nil)
+	conn, err := websocket.Accept(w, r, wsAcceptOptions)
 	if err != nil {
 		return // Accept already wrote the failure response
 	}
@@ -114,7 +125,7 @@ func (h *WSHandler) ServeCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := websocket.Accept(w, r, nil)
+	conn, err := websocket.Accept(w, r, wsAcceptOptions)
 	if err != nil {
 		return
 	}

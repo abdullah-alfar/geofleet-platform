@@ -39,7 +39,7 @@ func NewServer(
 	// correlation id after next.ServeHTTP returns, so it must already be
 	// set on the request by the time logging runs (see
 	// apps/location-service's identical fix from Phase 3).
-	handler := chain(mux, correlationMiddleware, loggingMiddleware(logger))
+	handler := chain(mux, corsMiddleware, correlationMiddleware, loggingMiddleware(logger))
 
 	return &http.Server{
 		Addr:         ":" + cfg.Port,

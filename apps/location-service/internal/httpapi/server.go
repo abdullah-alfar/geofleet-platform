@@ -42,7 +42,7 @@ func NewServer(
 	// correlationMiddleware must be outermost: loggingMiddleware reads the
 	// correlation id (via r.Context()) after next.ServeHTTP returns, so the
 	// id has to already be set on the request by the time logging runs.
-	handler := chain(mux, correlationMiddleware, loggingMiddleware(logger))
+	handler := chain(mux, corsMiddleware, correlationMiddleware, loggingMiddleware(logger))
 
 	return &http.Server{
 		Addr:         ":" + cfg.Port,

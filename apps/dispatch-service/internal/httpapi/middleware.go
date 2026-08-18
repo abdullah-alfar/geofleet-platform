@@ -24,6 +24,26 @@ type DriverAuthenticator interface {
 	GetDriverProfile(ctx context.Context, driverUUID string) (*driverprofile.Profile, error)
 }
 
+// corsMiddleware allows browser-based clients (apps/driver-web) to call
+// this service directly from a different origin/port — see
+// apps/location-service's identical middleware for the full reasoning
+// (permissive by design, bearer-device-token authenticated, not
+// cookie-based). Must run before the mux does its own routing (see
+// server.go's chain ordering) — net/http's ServeMux 405s an OPTIONS
+// preflight against a route registered for a specific method.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func correlationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		correlationID := r.Header.Get("X-Correlation-Id")

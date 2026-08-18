@@ -24,6 +24,29 @@ type DeviceAuthenticator interface {
 	LookupByTokenHash(ctx context.Context, tokenHash string) (gps.Device, error)
 }
 
+// corsMiddleware allows browser-based clients (apps/driver-web) to call
+// this service directly from a different origin/port — this API predates
+// any browser client (only curl and a driver's native mobile app called
+// it before), so nothing here handled preflight requests. Permissive by
+// design: every route is bearer-device-token authenticated, not
+// cookie/session based, so an open Access-Control-Allow-Origin carries no
+// more risk than any other public token-authenticated API. Must run
+// before the mux does its own routing (see server.go's chain ordering) —
+// net/http's ServeMux 405s an OPTIONS preflight against a route
+// registered as e.g. "POST /v1/locations" since OPTIONS doesn't match.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // correlationMiddleware reuses a client-supplied X-Correlation-Id (mirrors
 // core-api's AssignCorrelationId middleware — see apps/core-api) or
 // generates one, so a single GPS update can be traced through this

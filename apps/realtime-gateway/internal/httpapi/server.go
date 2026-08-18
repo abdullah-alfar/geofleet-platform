@@ -34,7 +34,7 @@ func NewServer(
 	mux.HandleFunc("GET /v1/ws/driver", wsHandler.ServeDriver)
 	mux.HandleFunc("GET /v1/ws/customer", wsHandler.ServeCustomer)
 
-	handler := chain(mux, correlationMiddleware, loggingMiddlewareExcept(logger, "/v1/ws/"))
+	handler := chain(mux, corsMiddleware, correlationMiddleware, loggingMiddlewareExcept(logger, "/v1/ws/"))
 
 	return &http.Server{
 		Addr:         ":" + cfg.Port,
