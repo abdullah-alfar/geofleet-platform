@@ -1,5 +1,16 @@
 # admin-api: Laravel command integration (Phase 6)
 
+**Superseded by [ADR 0011](../decisions/0011-admin-api-independent-service.md).**
+This entire document describes the Phase 6 design — admin-api forwarding
+commands to core-api's `internal/v1` API over HTTP, authenticated by the
+shared secret [ADR 0010](../decisions/0010-internal-service-authentication.md)
+describes. That call path no longer exists: admin-api now writes
+directly to Postgres for every command (guard, outbox insert, audit
+insert, all in one transaction — see each module's `*.service.ts`,
+e.g. `drivers.service.ts`). Kept as historical record, not deleted, per
+this doc set's own convention — read everything below as describing the
+*old* mechanism.
+
 How an admin action (suspend a driver, cancel a trip, refund a payment)
 gets from a click in admin-web to a real Postgres write and — where a
 topic exists for it — a Kafka event, without admin-api ever touching

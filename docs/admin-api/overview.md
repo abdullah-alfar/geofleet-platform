@@ -1,5 +1,13 @@
 # admin-api: Overview
 
+**As of [ADR 0011](../decisions/0011-admin-api-independent-service.md)
+(Phase 8), the paragraph below describes the Phases 1-7 design, not the
+current one** — admin-api now reads and writes core-api's Postgres
+tables directly, with its own broadened role and its own independent
+login/session system, and makes no HTTP calls to core-api at all. Kept
+as historical record; see [architecture.md](architecture.md)'s "Phase 8"
+section for the current picture.
+
 `apps/admin-api` is a NestJS 11/TypeScript Admin BFF for the GeoFleet
 platform: it serves the administrative dashboard by reading live from
 core-api's own `internal/v1` API and forwards operational commands to it,

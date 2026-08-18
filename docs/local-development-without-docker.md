@@ -231,11 +231,16 @@ npm install
 npm run start:dev
 ```
 
-Requires core-api already running (login + the `admin:create` account from
-step 3) — admin-api never talks to Kafka or to core-api's database
-directly, only to core-api's own HTTP API (`CORE_API_BASE_URL` in
-`.env.example`) and to Redis (for the realtime driver-map/counters
-module). See [apps/admin-api/README.md](../apps/admin-api/README.md).
+Requires core-api's migrations to have been applied at least once (they
+create/broaden the `admin_api` Postgres role and the `admin_sessions`
+table, and the `admin:create` account from step 3) — core-api's own
+process does **not** need to be running afterward. admin-api connects
+directly to Postgres (own login/session store, direct reads/writes of
+core-api's tables — see
+[ADR 0011](decisions/0011-admin-api-independent-service.md))
+and to Redis (for the realtime driver-map/counters module); it makes no
+HTTP calls to core-api at all. See
+[apps/admin-api/README.md](../apps/admin-api/README.md).
 
 ## 6. admin-web (Nuxt 4)
 

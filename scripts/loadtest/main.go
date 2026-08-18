@@ -36,6 +36,9 @@ type config struct {
 
 	baseLat, baseLng float64
 
+	acceptOffers bool
+	watch        time.Duration
+
 	runID int64
 }
 
@@ -64,6 +67,8 @@ func run() error {
 	flag.IntVar(&cfg.rideBurstConcurrency, "ride-burst-concurrency", 50, "max concurrent ride-request creations in the burst phase")
 	flag.Float64Var(&cfg.baseLat, "base-lat", 31.9539, "base latitude drivers/rides are scattered around (default: Amman)")
 	flag.Float64Var(&cfg.baseLng, "base-lng", 35.9106, "base longitude drivers/rides are scattered around (default: Amman)")
+	flag.BoolVar(&cfg.acceptOffers, "accept-offers", true, "after the ride-request burst, have each matched driver poll dispatch-service for and accept its offer (turns ride requests into assigned rides, drivers flip to unavailable)")
+	flag.DurationVar(&cfg.watch, "watch", 0, "after everything else, keep sending driver GPS pings for this long so the admin dashboard's live map/counters stay populated while you look at them (0 disables; admin-api treats a position as stale after 60s)")
 	flag.Parse()
 
 	cfg.coreAPIDir = filepath.Join(cfg.repoRoot, "apps", "core-api")
@@ -130,6 +135,20 @@ func run() error {
 	after := scrapeAll(cfg)
 
 	printReport(before, after, gpsElapsed, rideElapsed)
+
+	if cfg.acceptOffers {
+		fmt.Println("\n--- accepting offers: each matched driver polling dispatch-service and accepting ---")
+		acceptStart := time.Now()
+		acceptResult := acceptPendingOffers(cfg, drivers)
+		fmt.Printf("offer-accept phase done in %s: %d accepted, %d had no offer, %d failed\n",
+			time.Since(acceptStart).Round(time.Second), acceptResult.accepted, acceptResult.noOffer, acceptResult.failed)
+	}
+
+	if cfg.watch > 0 {
+		fmt.Printf("\n--- watch phase: sending GPS pings for %s so the map stays live — open the admin dashboard's realtime page now (region \"amman\") ---\n", cfg.watch)
+		runGPSLoad(cfg, drivers, cfg.gpsInterval, cfg.watch)
+		fmt.Println("watch phase done.")
+	}
 
 	return nil
 }

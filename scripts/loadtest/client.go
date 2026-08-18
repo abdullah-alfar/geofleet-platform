@@ -28,6 +28,38 @@ var sharedClient = &http.Client{
 	},
 }
 
+func getJSON(url, bearer string, out any) error {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+
+	resp, err := sharedClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 300))
+	}
+
+	if out != nil {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return fmt.Errorf("decode response: %w (body: %s)", err, truncate(string(respBody), 300))
+		}
+	}
+	return nil
+}
+
 func postJSON(url, bearer string, body any, out any) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
