@@ -137,6 +137,9 @@ async function runDriverCommand(action: 'approve' | 'suspend' | 'unsuspend' | 'd
           </dd>
         </div>
       </dl>
+
+      <h2 class="mb-3 mt-8 text-base font-semibold text-slate-900">Live location</h2>
+      <DriverLiveMap :driver-id="driverId" />
     </div>
   </div>
 </template>

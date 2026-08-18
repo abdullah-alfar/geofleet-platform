@@ -84,6 +84,19 @@ export interface RegionLiveCounters {
   sampled_at: string;
 }
 
+export interface DriverTrace {
+  driver_id: string;
+  name: string | null;
+  vehicle_type: string | null;
+  status: string | null;
+  online: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  is_available: boolean | null;
+  updated_at: string | null;
+  sampled_at: string;
+}
+
 export interface StaleSearchingRideIncident {
   type: 'stale_searching_ride';
   ride_request_id: string;
@@ -159,6 +172,32 @@ export class RealtimeService {
       region_id: regionId,
       drivers,
       truncated,
+      sampled_at: new Date().toISOString(),
+    };
+  }
+
+  /** Single-driver equivalent of getRegionDriverMap — meant to be polled
+   * every couple of seconds by a focused "trace this driver" screen (the
+   * region map is too coarse/heavy for that: it re-fetches every driver
+   * in the region on every poll). `findOne` throws NotFoundException for
+   * an unknown id, same as every other single-resource lookup in this
+   * codebase. */
+  async getDriverPosition(driverId: string): Promise<DriverTrace> {
+    const driver = await this.drivers.findOne(driverId, undefined);
+    const states = await this.fetchDispatchStates([driverId]);
+    const state = states.get(driverId);
+    const online = !!state && isFresh(state);
+
+    return {
+      driver_id: driver.driver_id,
+      name: driver.name,
+      vehicle_type: driver.vehicle_type,
+      status: driver.status,
+      online,
+      latitude: online ? state!.lat : null,
+      longitude: online ? state!.lng : null,
+      is_available: online ? state!.available : null,
+      updated_at: online ? state!.updated_at : null,
       sampled_at: new Date().toISOString(),
     };
   }

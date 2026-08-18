@@ -33,7 +33,9 @@ Flags (all optional, see `go run . -h` for the full list and defaults):
 | `-gps-interval` | 4s | Average time between one driver's GPS pings |
 | `-gps-duration` | 30s | How long the GPS load phase runs |
 | `-seed-concurrency` | 20 | Max concurrent registration requests |
-| `-ride-burst-concurrency` | 50 | Max concurrent ride-request creations |
+| `-ride-burst-concurrency` | 50 | Max concurrent ride-request creations (also used as the offer-accept phase's concurrency) |
+| `-accept-offers` | true | Have each matched driver poll dispatch-service for and accept its offer after the burst |
+| `-watch` | 0 (off) | After everything else, keep sending driver GPS pings for this long so the admin dashboard's live map/counters stay populated while you look at them |
 
 ## What it does
 
@@ -51,8 +53,40 @@ Flags (all optional, see `go run . -h` for the full list and defaults):
 5. Prints a report built entirely from each service's own
    already-instrumented Prometheus metrics (histograms included) —
    scraped once before step 3 and once after step 4 finishes draining.
+6. If `-accept-offers` (default on): every driver polls dispatch-service
+   for its own pending offer (up to 15s, matching `OFFER_TTL`) and accepts
+   it — mirrors `scripts/api-test/10-check-offers.sh` +
+   `11-accept-offer.sh`, run concurrently across the whole fleet. This is
+   what actually turns a matched ride request into an assigned ride and
+   flips the driver to unavailable in dispatch-service's Redis index —
+   real state for the admin dashboard to show, not just idle pins. Not
+   every driver gets an offer (matching is probabilistic — see
+   `rides.go`'s doc comment), so some `noOffer` count is expected.
+7. If `-watch` is set: keeps pinging GPS for that long afterward, since
+   admin-api's live map treats a position as stale after 60s
+   (`STALE_LOCATION_AGE_MS`) — without this, drivers vanish from the map
+   by the time you've switched over to look at it.
 
 Seeded test data (`loadtest-driver-*@test.local` /
 `loadtest-customer-*@test.local`) is left in place afterward — this tool
 doesn't clean up after itself. Safe to leave for a local dev database;
 delete manually or `php artisan migrate:fresh` if you want a clean slate.
+
+## Demo: seeing it live in admin-web's dashboard/map
+
+To generate visible activity for `apps/admin-web`'s dashboard and
+realtime page (`/realtime`, region `amman` by default) rather than just
+measure throughput:
+
+```bash
+cd scripts/loadtest
+go run . -drivers=100 -customers=100 -gps-duration=20s -watch=5m
+```
+
+Log into admin-web, open `/realtime`, and watch the driver map/counters
+update for the next 5 minutes while the tool keeps GPS pings flowing —
+long enough to switch windows and look. The dashboard's summary page
+picks up the new drivers/rides immediately (it reads Postgres directly,
+no freshness window); the realtime map/counters need at least one GPS
+ping to have landed (a few seconds after the tool starts) and stay live
+only as long as `-watch` keeps pinging.

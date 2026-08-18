@@ -17,6 +17,19 @@ export interface RegionDriverMap {
   sampled_at: string;
 }
 
+export interface DriverTrace {
+  driver_id: string;
+  name: string | null;
+  vehicle_type: string | null;
+  status: string | null;
+  online: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  is_available: boolean | null;
+  updated_at: string | null;
+  sampled_at: string;
+}
+
 export interface RegionLiveCounters {
   region_id: string;
   online_drivers_live: number;

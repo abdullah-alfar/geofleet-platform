@@ -5,6 +5,7 @@ import { RequirePermissions } from '../auth/decorators/require-permissions.decor
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import {
+  DriverTrace,
   Incident,
   RealtimeService,
   RegionDriverMap,
@@ -37,6 +38,17 @@ export class RealtimeController {
   })
   regionDrivers(@Param('regionId') regionId: string): Promise<RegionDriverMap> {
     return this.realtime.getRegionDriverMap(regionId);
+  }
+
+  @Get('drivers/:driverId')
+  @RequirePermissions('drivers.view')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @ApiOperation({
+    summary:
+      'Live position for a single driver, from dispatch-service’s own Redis index — meant to be polled every couple of seconds by a focused tracking view, not the full region map.',
+  })
+  driverPosition(@Param('driverId') driverId: string): Promise<DriverTrace> {
+    return this.realtime.getDriverPosition(driverId);
   }
 
   @Get('regions/:regionId/counters')
