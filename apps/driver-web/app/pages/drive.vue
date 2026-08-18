@@ -74,9 +74,21 @@ const gpsError = ref<string | null>(null);
 const lastPingAt = ref<string | null>(null);
 
 // Prefilled to the same Amman point apps/rider-web's ride form defaults
-// to, so a demo driver and a demo rider naturally end up near each other.
+// to, so a demo driver and a demo rider naturally end up near each other
+// — this platform's seeded drivers/customers/regions are all Amman-based
+// demo data, not real geography tied to wherever this browser actually
+// is. Real browser geolocation is opt-in (see useRealGps below), not the
+// default: a real device is almost never physically in Amman, so
+// switching from this fixed point to a real position mid-loop implies
+// "traveled thousands of km in 5 seconds" — location-service correctly
+// rejects that as an implausible speed (see
+// internal/validation/validateMovement), and every following real-GPS
+// ping keeps failing the same way against that same stale last-accepted
+// point. Manual lat/lng (near-zero implied speed between pings) avoids
+// the failure mode entirely and is what this demo data actually expects.
 const lat = ref(31.9539);
 const lng = ref(35.9106);
+const useRealGps = ref(false);
 
 let pingTimer: ReturnType<typeof setInterval> | undefined;
 let geoWatchId: number | null = null;
@@ -93,7 +105,7 @@ async function pingOnce() {
 }
 
 function startGpsLoop() {
-  if (import.meta.client && 'geolocation' in navigator) {
+  if (useRealGps.value && import.meta.client && 'geolocation' in navigator) {
     geoWatchId = navigator.geolocation.watchPosition(
       (position) => {
         lat.value = position.coords.latitude;
@@ -251,11 +263,17 @@ onUnmounted(() => {
         <div v-if="driver.is_available" class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
           <p class="mb-2 font-medium text-slate-900">GPS</p>
           <div class="flex gap-2">
-            <input v-model.number="lat" type="number" step="0.0001" class="w-1/2 rounded-md border border-slate-300 px-3 py-2 text-sm">
-            <input v-model.number="lng" type="number" step="0.0001" class="w-1/2 rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <input v-model.number="lat" type="number" step="0.0001" :disabled="useRealGps" class="w-1/2 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400">
+            <input v-model.number="lng" type="number" step="0.0001" :disabled="useRealGps" class="w-1/2 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400">
           </div>
+          <label class="mt-2 flex items-center gap-2 text-xs text-slate-600">
+            <input v-model="useRealGps" type="checkbox">
+            Use my browser's real location instead
+          </label>
           <p class="mt-2 text-xs text-slate-500">
-            Uses your browser's location when available, otherwise the fields above — pinged every {{ GPS_PING_INTERVAL_MS / 1000 }}s.
+            This platform's demo drivers/riders are all in Amman — leave real location off unless
+            you're actually there, or every ride will imply an impossible jump in position.
+            Pinged every {{ GPS_PING_INTERVAL_MS / 1000 }}s.
             <template v-if="lastPingAt">Last sent {{ new Date(lastPingAt).toLocaleTimeString() }}.</template>
           </p>
           <p v-if="gpsError" class="mt-1 text-red-600">{{ gpsError }}</p>
