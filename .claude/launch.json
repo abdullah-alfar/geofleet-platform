@@ -24,6 +24,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd apps/landing-web && npm run dev"],
       "port": 3002
+    },
+    {
+      "name": "rider-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd apps/rider-web && npm run dev"],
+      "port": 3003
     }
   ]
 }
