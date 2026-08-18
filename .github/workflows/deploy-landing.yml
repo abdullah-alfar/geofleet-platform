@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "landing-web/**"
+      - "apps/landing-web/**"
       - ".github/workflows/deploy-landing.yml"
 
   workflow_dispatch:
@@ -25,32 +25,32 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: landing-web/package-lock.json
+          cache-dependency-path: apps/landing-web/package-lock.json
 
       - name: Install dependencies
-        working-directory: landing-web
+        working-directory: apps/landing-web
         run: npm ci
 
       - name: Build Nuxt
-        working-directory: landing-web
+        working-directory: apps/landing-web
         env:
           NUXT_APP_BASE_URL: /geofleet-platform/
         run: npx nuxt build --preset github_pages
 
       - name: Setup Pages
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: landing-web/.output/public
+          path: apps/landing-web/.output/public
 
   deploy:
     needs: build
@@ -63,4 +63,4 @@ jobs:
     steps:
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4
